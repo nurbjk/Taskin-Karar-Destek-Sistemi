@@ -13,7 +13,7 @@ import base64
 warnings.filterwarnings("ignore")
 st.set_page_config(page_title="Taşkın Karar Destek Sistemi", layout="wide", page_icon="🌊")
 
-# Google Fonts Import and Premium Dark Theme CSS
+
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
@@ -217,7 +217,7 @@ def maliyet_hesapla(row, k_fiyat, t_fiyat):
     return int(row['ALAN_m2'] * f * birim * 0.8)
 
 # --- ARAYÜZ BAŞLANGICI ---
-# Base64 ile arka plan resmini alıyoruz
+
 def get_base64_of_bin_file(bin_file):
     try:
         with open(bin_file, 'rb') as f:
@@ -241,7 +241,7 @@ st.markdown(f"""
     </div>
     """, unsafe_allow_html=True)
 
-# 1. PARAMETRE AYARLARI (GÜZELLEŞTİRİLDİ)
+# PARAMETRE AYARLARI 
 with st.sidebar:
     st.markdown("### 🛠️ Sistem Ayarları")
     with st.expander("💰 Birim Maliyetleri Düzenle", expanded=True):
@@ -250,7 +250,7 @@ with st.sidebar:
     st.markdown("---")
     st.info("📊 Verilerinizi yükledikten sonra 'Analizi Başlat' butonuna tıklayın.")
 
-# 2. VERİ HAZIRLAMA KILAVUZU (GÜNCELLENDİ)
+# VERİ HAZIRLAMA KILAVUZU 
 with st.expander("📢 Veri Hazırlama Kılavuzu (Kritik Uyarılar)", expanded=False):
     c_k1, c_k2 = st.columns(2)
     with c_k1:
@@ -286,7 +286,7 @@ if bina_zip and hiz_csv and derin_csv:
                     
                     def temizle(file):
                         df = pd.read_csv(file, sep=';')
-                        # Sütun isimlerini kontrol et/düzelt
+                       
                         df.columns = [c.strip().upper() for c in df.columns]
                         for col in ['X', 'Y', 'Z']:
                             if col in df.columns:
@@ -302,14 +302,14 @@ if bina_zip and hiz_csv and derin_csv:
                     final['RISK'] = final.apply(lambda r: defra_etiket(r['DERIN'], r['HIZ']), axis=1)
                     final['MALIYET_TL'] = final.apply(lambda r: maliyet_hesapla(r, konut_f, ticari_f), axis=1)
 
-                    # 3. METRİKLER (BINLIK AYRAÇLI)
+                  
                     total_m = final['MALIYET_TL'].sum()
                     st.subheader("📌 Analiz Özeti")
                     m_col1, m_col2 = st.columns(2)
                     m_col1.metric("Toplam Bina Sayısı", f"{len(final)} Adet")
                     m_col2.metric("Toplam Tahmini Hasar", f"{total_m:,.0f} TL".replace(",", "."))
 
-                # ... (Kodun üst kısımları aynı kalacak)
+               
 
                     t1, t2 = st.tabs(["🗺️ Analiz Haritası", "📑 Detaylı Veri Tablosu"])
                     
@@ -344,7 +344,7 @@ if bina_zip and hiz_csv and derin_csv:
                             </div>
                             """
                             
-                            # Custom popup without default white background
+                            
                             iframe = folium.IFrame(html=html, width=290, height=260)
                             popup = folium.Popup(iframe, max_width=300)
                             
@@ -355,7 +355,7 @@ if bina_zip and hiz_csv and derin_csv:
                     with t2:
                         excel_df = final[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'MALIYET_TL']].copy()
                         
-                        # WEB TABLOSU: Hız ve Derinliği 2 haneye, Maliyeti nokta ayraçlıya sabitliyoruz [cite: 68, 110]
+                        
                         st.dataframe(excel_df.style.format({
                             "MALIYET_TL": "{:,.0f}", 
                             "ALAN_m2": "{:.2f}",
@@ -363,7 +363,7 @@ if bina_zip and hiz_csv and derin_csv:
                             "DERIN": "{:.2f}"
                         }, decimal=',', thousands='.'), use_container_width=True)
                         
-                        # EXCEL ÇIKTISI FORMATLAMA [cite: 70, 76, 107]
+                        
                         total_m = excel_df['MALIYET_TL'].sum()
                         total_row = pd.DataFrame([{'BINA_ID': 'TOPLAM', 'MALIYET_TL': total_m}])
                         excel_out = pd.concat([excel_df, total_row], ignore_index=True)
@@ -374,18 +374,17 @@ if bina_zip and hiz_csv and derin_csv:
                             workbook  = writer.book
                             worksheet = writer.sheets['AnalizRaporu']
                             
-                            # Excel için sayı formatları [cite: 108]
-                            num_format = workbook.add_format({'num_format': '#,##0'}) # Binlik ayraç [cite: 70]
-                            dec_format = workbook.add_format({'num_format': '0.00'})   # Ondalık (2 hane) [cite: 6]
                             
-                            # Sütunlara formatları uygula (A=0, B=1...) [cite: 104]
+                            num_format = workbook.add_format({'num_format': '#,##0'}) 
+                            dec_format = workbook.add_format({'num_format': '0.00'})   
+                            
+                         
                             worksheet.set_column('C:C', 12, dec_format) # Alan
                             worksheet.set_column('D:E', 10, dec_format) # Hız ve Derinlik
                             worksheet.set_column('G:G', 18, num_format) # Maliyet [cite: 104]
                             
                         st.download_button("📥 Excel Raporunu İndir", buf.getvalue(), "Taskin_Analiz_Raporu.xlsx", use_container_width=True)
 
-# ... (Hata yakalama kısımları aynı kalacak)
         except Exception as e:
             st.error(f"⚠️ Bir hata oluştu: {e}")
             st.info("Lütfen kılavuzdaki X, Y, Z (BÜYÜK HARF) ve CSV formatı kurallarına uyduğunuzdan emin olun.")
