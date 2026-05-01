@@ -256,6 +256,8 @@ with st.expander("📢 Veri Hazırlama Kılavuzu (Kritik Uyarılar)", expanded=F
     with c_k1:
         st.markdown("""
         **🏢 Bina Verisi (ZIP):**
+        - Google Earth vb. üzerinden **poligon** olarak çizilmiş binaları içermelidir.
+        - Sisteme yüklenen binalara arka planda otomatik **1 metre buffer** uygulanır.
         - Dosya içinde `.shp`, `.dbf`, `.shx`, `.prj` mutlaka bulunmalı.
         - Koordinat sistemi **EPSG:32635** olmalıdır.
         """)
