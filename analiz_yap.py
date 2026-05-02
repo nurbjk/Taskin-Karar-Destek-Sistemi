@@ -383,16 +383,19 @@ if st.session_state.get('analiz_tamam', False):
     with t2:
         st.info("💡 **Aşağıdaki tablodan 'TIP' sütununa çift tıklayarak** binanın kullanım türünü değiştirebilirsiniz.")
         
+        display_df = final[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'MALIYET_TL']].copy()
+        display_df['MALIYET_TL_STR'] = display_df['MALIYET_TL'].apply(lambda x: f"{x:,.0f}".replace(",", "."))
+        
         edited_df = st.data_editor(
-            final[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'MALIYET_TL']],
+            display_df[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'MALIYET_TL_STR']],
             column_config={
                 "TIP": st.column_config.SelectboxColumn("Bina Tipi", options=["Konut", "Ticari/Fabrika"], required=True),
-                "BINA_ID": st.column_config.NumberColumn(disabled=True),
-                "ALAN_m2": st.column_config.NumberColumn(disabled=True),
-                "HIZ": st.column_config.NumberColumn(disabled=True),
-                "DERIN": st.column_config.NumberColumn(disabled=True),
-                "RISK": st.column_config.TextColumn(disabled=True),
-                "MALIYET_TL": st.column_config.NumberColumn("Tahmini Hasar (TL)", disabled=True)
+                "BINA_ID": st.column_config.NumberColumn("Bina ID", disabled=True),
+                "ALAN_m2": st.column_config.NumberColumn("Alan (m²)", disabled=True),
+                "HIZ": st.column_config.NumberColumn("Hız (m/s)", disabled=True),
+                "DERIN": st.column_config.NumberColumn("Derinlik (m)", disabled=True),
+                "RISK": st.column_config.TextColumn("Risk Durumu", disabled=True),
+                "MALIYET_TL_STR": st.column_config.TextColumn("Tahmini Hasar (TL)", disabled=True)
             },
             hide_index=True,
             use_container_width=True,
