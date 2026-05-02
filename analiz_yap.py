@@ -184,9 +184,14 @@ def akilli_konum_analizi(gdf):
     bbox = gdf_wgs84.total_bounds
     try:
         # Sadece ticari, sanayi ve perakende binalarını/alanlarını sorgulayalım
+        # OSM'de binalar her zaman "commercial" olarak işaretlenmeyebilir, 
+        # dükkan (shop), ofis veya çeşitli tesis (amenity) etiketlerini de ekliyoruz.
         tags = {
             "building": ["commercial", "industrial", "retail", "warehouse", "supermarket", "factory", "office"],
-            "landuse": ["commercial", "industrial"]
+            "landuse": ["commercial", "industrial"],
+            "shop": True,
+            "office": True,
+            "amenity": ["restaurant", "cafe", "fast_food", "bank", "clinic", "hospital", "pharmacy", "marketplace", "fuel", "car_wash"]
         }
         area_features = ox.features_from_bbox(bbox[3], bbox[1], bbox[2], bbox[0], tags=tags)
         area_features = area_features[area_features.geometry.type.isin(['Polygon', 'MultiPolygon'])]
@@ -318,89 +323,115 @@ if bina_zip and hiz_csv and derin_csv:
                     final['RISK'] = final.apply(lambda r: defra_etiket(r['DERIN'], r['HIZ']), axis=1)
                     final['MALIYET_TL'] = final.apply(lambda r: maliyet_hesapla(r, konut_f, ticari_f), axis=1)
 
-                  
-                    total_m = final['MALIYET_TL'].sum()
-                    st.subheader("📌 Analiz Özeti")
-                    m_col1, m_col2 = st.columns(2)
-                    m_col1.metric("Toplam Bina Sayısı", f"{len(final)} Adet")
-                    m_col2.metric("Toplam Tahmini Hasar", f"{total_m:,.0f} TL".replace(",", "."))
-
-               
-
-                    t1, t2 = st.tabs(["🗺️ Analiz Haritası", "📑 Detaylı Veri Tablosu"])
-                    
-                    with t1:
-                        gw = final.to_crs(epsg=4326)
-                        m = folium.Map(location=[gw.geometry.centroid.y.mean(), gw.geometry.centroid.x.mean()], 
-                                       zoom_start=18, tiles='CartoDB Positron')
-                        
-                        for _, r in gw.iterrows():
-                            color = {'T4-CokYuk': '#ef4444', 'T3-Yuksek': '#f97316', 'T2-Hafif': '#eab308', 'T1-Dusuk': '#22c55e'}.get(r['RISK'], 'gray')
-                            
-                            m_fmt = "{:,.0f}".format(r['MALIYET_TL']).replace(",", ".")
-                            h_fmt = "{:.2f}".format(r['HIZ'])
-                            d_fmt = "{:.2f}".format(r['DERIN'])
-                            
-                            html = f"""
-                            <div style="font-family: 'Outfit', sans-serif; width: 250px; background-color: #0f172a; color: #e2e8f0; padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-                                <h4 style="margin: 0 0 10px 0; color: #38bdf8; font-size: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
-                                    🏢 Bina ID: {r['BINA_ID']}
-                                </h4>
-                                <div style="font-size: 13px; line-height: 1.6;">
-                                    <span style="color: #94a3b8;">Kullanım:</span> <strong style="color: white;">{r['TIP']}</strong><br>
-                                    <span style="color: #94a3b8;">Alan:</span> <strong style="color: white;">{r['ALAN_m2']} m²</strong><br>
-                                    <span style="color: #94a3b8;">Hız:</span> <strong style="color: white;">{h_fmt} m/s</strong><br>
-                                    <span style="color: #94a3b8;">Derinlik:</span> <strong style="color: white;">{d_fmt} m</strong><br>
-                                    <span style="color: #94a3b8;">Risk Durumu:</span> <strong style="color: {color};">{r['RISK']}</strong><br>
-                                </div>
-                                <div style="margin-top: 12px; padding: 10px; background: rgba(239, 68, 68, 0.1); border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.2); text-align: center;">
-                                    <span style="color: #94a3b8; font-size: 12px; display: block;">Tahmini Hasar</span>
-                                    <strong style="color: #ef4444; font-size: 18px;">₺ {m_fmt}</strong>
-                                </div>
-                            </div>
-                            """
-                            
-                            
-                            iframe = folium.IFrame(html=html, width=290, height=260)
-                            popup = folium.Popup(iframe, max_width=300)
-                            
-                            folium.GeoJson(r.geometry, style_function=lambda x, c=color: {'fillColor': c, 'color': c, 'weight': 1, 'fillOpacity': 0.6},
-                                           popup=popup).add_to(m)
-                        st.components.v1.html(m._repr_html_(), height=650)
-
-                    with t2:
-                        excel_df = final[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'MALIYET_TL']].copy()
-                        
-                        
-                        st.dataframe(excel_df.style.format({
-                            "MALIYET_TL": "{:,.0f}", 
-                            "ALAN_m2": "{:.2f}",
-                            "HIZ": "{:.2f}",
-                            "DERIN": "{:.2f}"
-                        }, decimal=',', thousands='.'), use_container_width=True)
-                        
-                        
-                        total_m = excel_df['MALIYET_TL'].sum()
-                        total_row = pd.DataFrame([{'BINA_ID': 'TOPLAM', 'MALIYET_TL': total_m}])
-                        excel_out = pd.concat([excel_df, total_row], ignore_index=True)
-                        
-                        buf = io.BytesIO()
-                        with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
-                            excel_out.to_excel(writer, index=False, sheet_name='AnalizRaporu')
-                            workbook  = writer.book
-                            worksheet = writer.sheets['AnalizRaporu']
-                            
-                            
-                            num_format = workbook.add_format({'num_format': '#,##0'}) 
-                            dec_format = workbook.add_format({'num_format': '0.00'})   
-                            
-                         
-                            worksheet.set_column('C:C', 12, dec_format) # Alan
-                            worksheet.set_column('D:E', 10, dec_format) # Hız ve Derinlik
-                            worksheet.set_column('G:G', 18, num_format) # Maliyet [cite: 104]
-                            
-                        st.download_button("📥 Excel Raporunu İndir", buf.getvalue(), "Taskin_Analiz_Raporu.xlsx", use_container_width=True)
+                    st.session_state['analiz_final'] = final
+                    st.session_state['analiz_tamam'] = True
+                    st.rerun()
 
         except Exception as e:
             st.error(f"⚠️ Bir hata oluştu: {e}")
             st.info("Lütfen kılavuzdaki X, Y, Z (BÜYÜK HARF) ve CSV formatı kurallarına uyduğunuzdan emin olun.")
+
+if st.session_state.get('analiz_tamam', False):
+    final = st.session_state['analiz_final']
+    
+    st.markdown("---")
+    st.subheader("🛠️ Bina Tiplerini Manuel Düzenle")
+    st.info("💡 **Aşağıdaki tablodan 'TIP' sütununa çift tıklayarak** binanın kullanım türünü değiştirebilirsiniz. Seçtiğiniz tipe göre maliyet otomatik olarak yeniden hesaplanacaktır.")
+    
+    edited_df = st.data_editor(
+        final[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'MALIYET_TL']],
+        column_config={
+            "TIP": st.column_config.SelectboxColumn("Bina Tipi", options=["Konut", "Ticari/Fabrika", "Ticari/Fabrika (*)", "Ticari/Fabrika (OSM)"], required=True),
+            "BINA_ID": st.column_config.NumberColumn(disabled=True),
+            "ALAN_m2": st.column_config.NumberColumn(disabled=True),
+            "HIZ": st.column_config.NumberColumn(disabled=True),
+            "DERIN": st.column_config.NumberColumn(disabled=True),
+            "RISK": st.column_config.TextColumn(disabled=True),
+            "MALIYET_TL": st.column_config.NumberColumn("Tahmini Hasar (TL)", disabled=True)
+        },
+        hide_index=True,
+        use_container_width=True,
+        key="bina_editor"
+    )
+    
+    # Değişiklik varsa maliyeti tekrar hesapla
+    if not final['TIP'].equals(edited_df['TIP']):
+        final['TIP'] = edited_df['TIP']
+        final['MALIYET_TL'] = final.apply(lambda r: maliyet_hesapla(r, konut_f, ticari_f), axis=1)
+        st.session_state['analiz_final'] = final
+        st.rerun()
+
+    total_m = final['MALIYET_TL'].sum()
+    st.subheader("📌 Analiz Özeti")
+    m_col1, m_col2 = st.columns(2)
+    m_col1.metric("Toplam Bina Sayısı", f"{len(final)} Adet")
+    m_col2.metric("Toplam Tahmini Hasar", f"{total_m:,.0f} TL".replace(",", "."))
+
+    t1, t2 = st.tabs(["🗺️ Analiz Haritası", "📑 Detaylı Veri Tablosu"])
+    
+    with t1:
+        gw = final.to_crs(epsg=4326)
+        m = folium.Map(location=[gw.geometry.centroid.y.mean(), gw.geometry.centroid.x.mean()], 
+                       zoom_start=18, tiles='CartoDB Positron')
+        
+        for _, r in gw.iterrows():
+            color = {'T4-CokYuk': '#ef4444', 'T3-Yuksek': '#f97316', 'T2-Hafif': '#eab308', 'T1-Dusuk': '#22c55e'}.get(r['RISK'], 'gray')
+            
+            m_fmt = "{:,.0f}".format(r['MALIYET_TL']).replace(",", ".")
+            h_fmt = "{:.2f}".format(r['HIZ'])
+            d_fmt = "{:.2f}".format(r['DERIN'])
+            
+            html = f"""
+            <div style="font-family: 'Outfit', sans-serif; width: 250px; background-color: #0f172a; color: #e2e8f0; padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                <h4 style="margin: 0 0 10px 0; color: #38bdf8; font-size: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
+                    🏢 Bina ID: {r['BINA_ID']}
+                </h4>
+                <div style="font-size: 13px; line-height: 1.6;">
+                    <span style="color: #94a3b8;">Kullanım:</span> <strong style="color: white;">{r['TIP']}</strong><br>
+                    <span style="color: #94a3b8;">Alan:</span> <strong style="color: white;">{r['ALAN_m2']} m²</strong><br>
+                    <span style="color: #94a3b8;">Hız:</span> <strong style="color: white;">{h_fmt} m/s</strong><br>
+                    <span style="color: #94a3b8;">Derinlik:</span> <strong style="color: white;">{d_fmt} m</strong><br>
+                    <span style="color: #94a3b8;">Risk Durumu:</span> <strong style="color: {color};">{r['RISK']}</strong><br>
+                </div>
+                <div style="margin-top: 12px; padding: 10px; background: rgba(239, 68, 68, 0.1); border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.2); text-align: center;">
+                    <span style="color: #94a3b8; font-size: 12px; display: block;">Tahmini Hasar</span>
+                    <strong style="color: #ef4444; font-size: 18px;">₺ {m_fmt}</strong>
+                </div>
+            </div>
+            """
+            
+            iframe = folium.IFrame(html=html, width=290, height=260)
+            popup = folium.Popup(iframe, max_width=300)
+            
+            folium.GeoJson(r.geometry, style_function=lambda x, c=color: {'fillColor': c, 'color': c, 'weight': 1, 'fillOpacity': 0.6},
+                           popup=popup).add_to(m)
+        st.components.v1.html(m._repr_html_(), height=650)
+
+    with t2:
+        excel_df = final[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'MALIYET_TL']].copy()
+        
+        st.dataframe(excel_df.style.format({
+            "MALIYET_TL": "{:,.0f}", 
+            "ALAN_m2": "{:.2f}",
+            "HIZ": "{:.2f}",
+            "DERIN": "{:.2f}"
+        }, decimal=',', thousands='.'), use_container_width=True)
+        
+        total_m = excel_df['MALIYET_TL'].sum()
+        total_row = pd.DataFrame([{'BINA_ID': 'TOPLAM', 'MALIYET_TL': total_m}])
+        excel_out = pd.concat([excel_df, total_row], ignore_index=True)
+        
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+            excel_out.to_excel(writer, index=False, sheet_name='AnalizRaporu')
+            workbook  = writer.book
+            worksheet = writer.sheets['AnalizRaporu']
+            
+            num_format = workbook.add_format({'num_format': '#,##0'}) 
+            dec_format = workbook.add_format({'num_format': '0.00'})   
+            
+            worksheet.set_column('C:C', 12, dec_format) # Alan
+            worksheet.set_column('D:E', 10, dec_format) # Hız ve Derinlik
+            worksheet.set_column('G:G', 18, num_format) # Maliyet [cite: 104]
+            
+        st.download_button("📥 Excel Raporunu İndir", buf.getvalue(), "Taskin_Analiz_Raporu.xlsx", use_container_width=True)
