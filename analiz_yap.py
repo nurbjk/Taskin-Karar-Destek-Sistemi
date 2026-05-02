@@ -204,12 +204,11 @@ def akilli_konum_analizi(gdf):
         if not area_features.empty:
             nearby = area_features[area_features.geometry.distance(row.geometry.centroid) < 0.0002]
             if not nearby.empty: 
-                res = "Ticari/Fabrika (OSM)"
+                res = "Ticari/Fabrika"
                 
-        # 600 m2 çok düşüktü (bahçeli evler vb. dahil edildiğinde 600'ü rahat geçer)
-        # Sınırı 2000 m2'ye çıkarıyoruz
+        # Alan çok büyükse ticari diyelim
         if res == "Konut" and row['ALAN_m2'] > 2000: 
-            res = "Ticari/Fabrika (*)"
+            res = "Ticari/Fabrika"
             
         tipler.append(res)
     return tipler
@@ -278,7 +277,7 @@ with st.expander("📢 Veri Hazırlama Kılavuzu (Kritik Uyarılar)", expanded=F
         - Google Earth vb. üzerinden **poligon** olarak çizilmiş binaları içermelidir.
         - Sisteme yüklenen binalara arka planda otomatik **1 metre buffer** uygulanır.
         - Dosya içinde `.shp`, `.dbf`, `.shx`, `.prj` mutlaka bulunmalı.
-        - Koordinat sistemi **EPSG:32635** olmalıdır.
+        - Binalarınız hangi projeksiyonda olursa olsun, metrik hesaplamalar için sistem tarafından otomatik olarak **UTM Zone 35N (EPSG:32635)** formatına dönüştürülür.
         """)
     with c_k2:
         st.markdown("""
@@ -335,32 +334,6 @@ if st.session_state.get('analiz_tamam', False):
     final = st.session_state['analiz_final']
     
     st.markdown("---")
-    st.subheader("🛠️ Bina Tiplerini Manuel Düzenle")
-    st.info("💡 **Aşağıdaki tablodan 'TIP' sütununa çift tıklayarak** binanın kullanım türünü değiştirebilirsiniz. Seçtiğiniz tipe göre maliyet otomatik olarak yeniden hesaplanacaktır.")
-    
-    edited_df = st.data_editor(
-        final[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'MALIYET_TL']],
-        column_config={
-            "TIP": st.column_config.SelectboxColumn("Bina Tipi", options=["Konut", "Ticari/Fabrika", "Ticari/Fabrika (*)", "Ticari/Fabrika (OSM)"], required=True),
-            "BINA_ID": st.column_config.NumberColumn(disabled=True),
-            "ALAN_m2": st.column_config.NumberColumn(disabled=True),
-            "HIZ": st.column_config.NumberColumn(disabled=True),
-            "DERIN": st.column_config.NumberColumn(disabled=True),
-            "RISK": st.column_config.TextColumn(disabled=True),
-            "MALIYET_TL": st.column_config.NumberColumn("Tahmini Hasar (TL)", disabled=True)
-        },
-        hide_index=True,
-        use_container_width=True,
-        key="bina_editor"
-    )
-    
-    # Değişiklik varsa maliyeti tekrar hesapla
-    if not final['TIP'].equals(edited_df['TIP']):
-        final['TIP'] = edited_df['TIP']
-        final['MALIYET_TL'] = final.apply(lambda r: maliyet_hesapla(r, konut_f, ticari_f), axis=1)
-        st.session_state['analiz_final'] = final
-        st.rerun()
-
     total_m = final['MALIYET_TL'].sum()
     st.subheader("📌 Analiz Özeti")
     m_col1, m_col2 = st.columns(2)
@@ -408,18 +381,33 @@ if st.session_state.get('analiz_tamam', False):
         st.components.v1.html(m._repr_html_(), height=650)
 
     with t2:
-        excel_df = final[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'MALIYET_TL']].copy()
+        st.info("💡 **Aşağıdaki tablodan 'TIP' sütununa çift tıklayarak** binanın kullanım türünü değiştirebilirsiniz.")
         
-        st.dataframe(excel_df.style.format({
-            "MALIYET_TL": "{:,.0f}", 
-            "ALAN_m2": "{:.2f}",
-            "HIZ": "{:.2f}",
-            "DERIN": "{:.2f}"
-        }, decimal=',', thousands='.'), use_container_width=True)
+        edited_df = st.data_editor(
+            final[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'MALIYET_TL']],
+            column_config={
+                "TIP": st.column_config.SelectboxColumn("Bina Tipi", options=["Konut", "Ticari/Fabrika"], required=True),
+                "BINA_ID": st.column_config.NumberColumn(disabled=True),
+                "ALAN_m2": st.column_config.NumberColumn(disabled=True),
+                "HIZ": st.column_config.NumberColumn(disabled=True),
+                "DERIN": st.column_config.NumberColumn(disabled=True),
+                "RISK": st.column_config.TextColumn(disabled=True),
+                "MALIYET_TL": st.column_config.NumberColumn("Tahmini Hasar (TL)", disabled=True)
+            },
+            hide_index=True,
+            use_container_width=True,
+            key="bina_editor"
+        )
         
-        total_m = excel_df['MALIYET_TL'].sum()
-        total_row = pd.DataFrame([{'BINA_ID': 'TOPLAM', 'MALIYET_TL': total_m}])
-        excel_out = pd.concat([excel_df, total_row], ignore_index=True)
+        # Değişiklik varsa maliyeti tekrar hesapla
+        if not final['TIP'].equals(edited_df['TIP']):
+            final['TIP'] = edited_df['TIP']
+            final['MALIYET_TL'] = final.apply(lambda r: maliyet_hesapla(r, konut_f, ticari_f), axis=1)
+            st.session_state['analiz_final'] = final
+            st.rerun()
+            
+        total_row = pd.DataFrame([{'BINA_ID': 'TOPLAM', 'MALIYET_TL': final['MALIYET_TL'].sum()}])
+        excel_out = pd.concat([final[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'MALIYET_TL']], total_row], ignore_index=True)
         
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
