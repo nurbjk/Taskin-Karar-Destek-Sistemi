@@ -168,10 +168,13 @@ st.markdown("""
 
 # --- ANALİZ FONKSİYONLARI ---
 def onarma_ve_numaralandirma(gdf):
-    if gdf.crs is None or gdf.crs.to_epsg() != 32635:
-        gdf = gdf.set_crs(epsg=32635, allow_override=True)
+    if gdf.crs is None:
+        gdf = gdf.set_crs(epsg=32635)
+    elif gdf.crs.to_epsg() != 32635:
+        gdf = gdf.to_crs(epsg=32635)
+        
     gdf.geometry = gdf.geometry.buffer(0)
-    gdf = gdf[~gdf.is_empty & (gdf.geometry.type == 'Polygon')].reset_index(drop=True)
+    gdf = gdf[~gdf.is_empty & (gdf.geometry.type.isin(['Polygon', 'MultiPolygon']))].reset_index(drop=True)
     gdf['BINA_ID'] = gdf.index + 1
     gdf['ALAN_m2'] = gdf.geometry.area.round(2)
     return gdf
