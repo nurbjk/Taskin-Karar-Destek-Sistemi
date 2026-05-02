@@ -183,18 +183,29 @@ def akilli_konum_analizi(gdf):
     gdf_wgs84 = gdf.to_crs(epsg=4326)
     bbox = gdf_wgs84.total_bounds
     try:
-        tags = {"building": True}
+        # Sadece ticari, sanayi ve perakende binalarını/alanlarını sorgulayalım
+        tags = {
+            "building": ["commercial", "industrial", "retail", "warehouse", "supermarket", "factory", "office"],
+            "landuse": ["commercial", "industrial"]
+        }
         area_features = ox.features_from_bbox(bbox[3], bbox[1], bbox[2], bbox[0], tags=tags)
         area_features = area_features[area_features.geometry.type.isin(['Polygon', 'MultiPolygon'])]
-    except: area_features = gpd.GeoDataFrame()
+    except: 
+        area_features = gpd.GeoDataFrame()
 
     tipler = []
     for i, row in gdf_wgs84.iterrows():
         res = "Konut"
         if not area_features.empty:
-            nearby = area_features[area_features.geometry.distance(row.geometry.centroid) < 0.0001]
-            if not nearby.empty: res = "Ticari/Fabrika"
-        if res == "Konut" and row['ALAN_m2'] > 600: res = "Ticari/Fabrika (*)"
+            nearby = area_features[area_features.geometry.distance(row.geometry.centroid) < 0.0002]
+            if not nearby.empty: 
+                res = "Ticari/Fabrika (OSM)"
+                
+        # 600 m2 çok düşüktü (bahçeli evler vb. dahil edildiğinde 600'ü rahat geçer)
+        # Sınırı 2000 m2'ye çıkarıyoruz
+        if res == "Konut" and row['ALAN_m2'] > 2000: 
+            res = "Ticari/Fabrika (*)"
+            
         tipler.append(res)
     return tipler
 
