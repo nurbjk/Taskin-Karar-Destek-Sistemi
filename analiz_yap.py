@@ -207,7 +207,7 @@ def akilli_konum_analizi(gdf):
                 res = "Ticari/Fabrika"
                 
         # Alan çok büyükse ticari diyelim
-        if res == "Konut" and row['ALAN_m2'] > 2000: 
+        if res == "Konut" and row['ALAN_m2'] > 1000: 
             res = "Ticari/Fabrika"
             
         tipler.append(res)
