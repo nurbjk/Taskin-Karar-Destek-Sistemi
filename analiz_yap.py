@@ -221,8 +221,16 @@ def taskin_analizini_yap(gdf_binalar, df_h, df_d):
     res_d = gpd.sjoin(pts_d, gdf_halkalar, predicate='within').groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'DERIN'})
     return pd.merge(res_h, res_d, on='BINA_ID', how='outer').fillna(0)
 
+def yapisal_risk(d):
+    if d <= 0.01: return "Yok"
+    elif d <= 0.6: return "H1-Dusuk"
+    elif d <= 1.0: return "H2-Orta"
+    elif d <= 3.5: return "H3-Yuksek"
+    else: return "H4-Asiri"
+
 def defra_etiket(d, v):
-    td = d * (v + 0.5) + (1 if d > 0.25 else 0)
+    mf = 0 if (d <= 0.25 and v <= 2.0) else 1
+    td = d * (v + 0.5) + mf
     if td < 0.75: return "T1-Dusuk"
     elif td < 1.25: return "T2-Hafif"
     elif td <= 2.5: return "T3-Yuksek"
@@ -230,7 +238,14 @@ def defra_etiket(d, v):
 
 def maliyet_hesapla(row, k_fiyat, t_fiyat):
     d = float(row['DERIN'])
-    f = 0.0 if d <= 0.01 else 0.15 if d <= 0.5 else 0.18 if d <= 1.0 else 0.21 if d <= 2.0 else 0.70 if d <= 4.0 else 1.0
+    if d <= 0.01: f = 0.0
+    elif d <= 0.5: f = 0.15
+    elif d <= 1.0: f = 0.18
+    elif d <= 1.5: f = 0.20
+    elif d <= 2.0: f = 0.21
+    elif d <= 3.0: f = 0.48
+    elif d <= 4.0: f = 0.70
+    else: f = 1.00
     birim = t_fiyat if "Ticari" in str(row['TIP']) else k_fiyat
     return int(row['ALAN_m2'] * f * birim * 0.8)
 
@@ -320,6 +335,7 @@ if bina_zip and hiz_csv and derin_csv:
                     analiz_res = taskin_analizini_yap(gdf, df_h, df_d)
                     final = gdf.merge(analiz_res, on='BINA_ID', how='left').fillna(0)
                     final['RISK'] = final.apply(lambda r: defra_etiket(r['DERIN'], r['HIZ']), axis=1)
+                    final['YAPI_RISKI'] = final['DERIN'].apply(yapisal_risk)
                     final['MALIYET_TL'] = final.apply(lambda r: maliyet_hesapla(r, konut_f, ticari_f), axis=1)
 
                     st.session_state['analiz_final'] = final
@@ -364,7 +380,8 @@ if st.session_state.get('analiz_tamam', False):
                     <span style="color: #94a3b8;">Alan:</span> <strong style="color: white;">{r['ALAN_m2']} m²</strong><br>
                     <span style="color: #94a3b8;">Hız:</span> <strong style="color: white;">{h_fmt} m/s</strong><br>
                     <span style="color: #94a3b8;">Derinlik:</span> <strong style="color: white;">{d_fmt} m</strong><br>
-                    <span style="color: #94a3b8;">Risk Durumu:</span> <strong style="color: {color};">{r['RISK']}</strong><br>
+                    <span style="color: #94a3b8;">Hayati Risk:</span> <strong style="color: {color};">{r['RISK']}</strong><br>
+                    <span style="color: #94a3b8;">Yapısal Hasar:</span> <strong style="color: white;">{r['YAPI_RISKI']}</strong><br>
                 </div>
                 <div style="margin-top: 12px; padding: 10px; background: rgba(239, 68, 68, 0.1); border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.2); text-align: center;">
                     <span style="color: #94a3b8; font-size: 12px; display: block;">Tahmini Hasar</span>
@@ -383,18 +400,19 @@ if st.session_state.get('analiz_tamam', False):
     with t2:
         st.info("💡 **Aşağıdaki tablodan 'TIP' sütununa çift tıklayarak** binanın kullanım türünü değiştirebilirsiniz.")
         
-        display_df = final[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'MALIYET_TL']].copy()
+        display_df = final[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'YAPI_RISKI', 'MALIYET_TL']].copy()
         display_df['MALIYET_TL_STR'] = display_df['MALIYET_TL'].apply(lambda x: f"{x:,.0f}".replace(",", "."))
         
         edited_df = st.data_editor(
-            display_df[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'MALIYET_TL_STR']],
+            display_df[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'YAPI_RISKI', 'MALIYET_TL_STR']],
             column_config={
                 "TIP": st.column_config.SelectboxColumn("Bina Tipi", options=["Konut", "Ticari/Fabrika"], required=True),
                 "BINA_ID": st.column_config.NumberColumn("Bina ID", disabled=True),
                 "ALAN_m2": st.column_config.NumberColumn("Alan (m²)", disabled=True),
                 "HIZ": st.column_config.NumberColumn("Hız (m/s)", disabled=True),
                 "DERIN": st.column_config.NumberColumn("Derinlik (m)", disabled=True),
-                "RISK": st.column_config.TextColumn("Risk Durumu", disabled=True),
+                "RISK": st.column_config.TextColumn("Hayati Risk (T1-T4)", disabled=True),
+                "YAPI_RISKI": st.column_config.TextColumn("Yapısal Risk (H1-H4)", disabled=True),
                 "MALIYET_TL_STR": st.column_config.TextColumn("Tahmini Hasar (TL)", disabled=True)
             },
             hide_index=True,
@@ -410,7 +428,7 @@ if st.session_state.get('analiz_tamam', False):
             st.rerun()
             
         total_row = pd.DataFrame([{'BINA_ID': 'TOPLAM', 'MALIYET_TL': final['MALIYET_TL'].sum()}])
-        excel_out = pd.concat([final[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'MALIYET_TL']], total_row], ignore_index=True)
+        excel_out = pd.concat([final[['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'YAPI_RISKI', 'MALIYET_TL']], total_row], ignore_index=True)
         
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
