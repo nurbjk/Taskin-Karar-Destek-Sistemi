@@ -441,6 +441,6 @@ if st.session_state.get('analiz_tamam', False):
             
             worksheet.set_column('C:C', 12, dec_format) # Alan
             worksheet.set_column('D:E', 10, dec_format) # Hız ve Derinlik
-            worksheet.set_column('G:G', 18, num_format) # Maliyet [cite: 104]
+            worksheet.set_column('H:H', 18, num_format) # Maliyet
             
         st.download_button("📥 Excel Raporunu İndir", buf.getvalue(), "Taskin_Analiz_Raporu.xlsx", use_container_width=True)
