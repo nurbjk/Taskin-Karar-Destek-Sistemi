@@ -392,7 +392,7 @@ if st.session_state.get('analiz_tamam', False):
                        attr='Esri Satellite')
         
         for _, r in gw.iterrows():
-            color = {'T4-CokYuk': '#ff0000', 'T3-Yuksek': '#2563eb', 'T2-Hafif': '#00ff00', 'T1-Dusuk': '#00ffff'}.get(r['RISK'], '#bbf7d0')
+            color = {'T4-CokYuk': '#ef4444', 'T3-Yuksek': '#f97316', 'T2-Hafif': '#eab308', 'T1-Dusuk': '#22c55e'}.get(r['RISK'], 'gray')
             
             m_fmt = "{:,.0f}".format(r['MALIYET_TL']).replace(",", ".")
             h_fmt = "{:.2f}".format(r['HIZ'])
@@ -424,25 +424,39 @@ if st.session_state.get('analiz_tamam', False):
             folium.GeoJson(r.geometry, style_function=lambda x, c=color: {'fillColor': c, 'color': c, 'weight': 1, 'fillOpacity': 0.6},
                            popup=popup).add_to(m)
                            
-        # Harita Lejantı Ekleme
-        legend_html = '''
-         <div style="position: absolute; 
-                     bottom: 20px; right: 20px; width: 140px; height: 160px; 
-                     background-color: rgba(15, 23, 42, 0.85); color: #e2e8f0; 
-                     border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; 
-                     padding: 10px; font-size: 14px; z-index: 9999;
-                     backdrop-filter: blur(5px);">
-             <strong style="color:#38bdf8; margin-bottom:10px; display:block;">Hayati Risk</strong>
-             <i style="background:#ff0000; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%;"></i> T4-CokYuk<br>
-             <i style="background:#2563eb; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T3-Yuksek<br>
-             <i style="background:#00ff00; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T2-Hafif<br>
-             <i style="background:#00ffff; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T1-Dusuk<br>
-             <i style="background:#bbf7d0; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> Yok<br>
-         </div>
-         '''
-        m.get_root().html.add_child(folium.Element(legend_html))
+        # Harita Lejantı Ekleme (Branca MacroElement ile Streamlit'te garantili gösterim)
+        from branca.element import Template, MacroElement
+        
+        legend_template = """
+        {% macro html(this, kwargs) %}
+        <div style="position: absolute; 
+                    bottom: 20px; right: 20px; width: 140px; height: 160px; 
+                    background-color: rgba(15, 23, 42, 0.85); color: #e2e8f0; 
+                    border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; 
+                    padding: 10px; font-size: 14px; z-index: 9999;
+                    backdrop-filter: blur(5px);">
+            <strong style="color:#38bdf8; margin-bottom:10px; display:block;">Hayati Risk</strong>
+            <i style="background:#ef4444; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%;"></i> T4-CokYuk<br>
+            <i style="background:#f97316; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T3-Yuksek<br>
+            <i style="background:#eab308; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T2-Hafif<br>
+            <i style="background:#22c55e; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T1-Dusuk<br>
+            <i style="background:gray; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> Yok<br>
+        </div>
+        {% endmacro %}
+        """
+        macro = MacroElement()
+        macro._template = Template(legend_template)
+        m.get_root().add_child(macro)
         
         st.components.v1.html(m._repr_html_(), height=500)
+        
+        st.download_button(
+            label="🗺️ Etkileşimli Haritayı İndir (HTML)",
+            data=m.get_root().render(),
+            file_name="Taskin_Analiz_Haritasi.html",
+            mime="text/html",
+            use_container_width=True
+        )
 
     with t2:
         st.info("💡 **Aşağıdaki tablodan 'TIP' sütununa çift tıklayarak** binanın kullanım türünü değiştirebilirsiniz.")
