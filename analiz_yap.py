@@ -328,29 +328,51 @@ if bina_zip and hiz_csv and derin_csv:
                     
                     def temizle(file, has_header_flag):
                         file.seek(0)
+                        
+                        # Veriyi her halükarda önce string olarak okuyalım ki formatını biz düzeltelim (Pandas bozmadan)
                         try:
                             if has_header_flag:
-                                df = pd.read_csv(file, sep=';')
+                                df = pd.read_csv(file, sep=';', dtype=str)
                                 df.columns = [str(c).strip().upper() for c in df.columns]
                             else:
-                                df = pd.read_csv(file, sep=';', header=None)
+                                df = pd.read_csv(file, sep=';', header=None, dtype=str)
                                 if df.shape[1] >= 3:
                                     df = df.iloc[:, :3]
                                     df.columns = ['X', 'Y', 'Z']
                         except:
                             file.seek(0)
                             if has_header_flag:
-                                df = pd.read_csv(file)
+                                df = pd.read_csv(file, dtype=str)
                                 df.columns = [str(c).strip().upper() for c in df.columns]
                             else:
-                                df = pd.read_csv(file, header=None)
+                                df = pd.read_csv(file, header=None, dtype=str)
                                 if df.shape[1] >= 3:
                                     df = df.iloc[:, :3]
                                     df.columns = ['X', 'Y', 'Z']
+
+                        def safely_convert_to_float(val):
+                            if pd.isna(val) or str(val).strip() == '': return 0.0
+                            val = str(val).strip()
+                            if '.' in val and ',' in val:
+                                # Hangisi daha sağdaysa o ondalık ayırıcıdır
+                                if val.rfind(',') > val.rfind('.'):
+                                    val = val.replace('.', '').replace(',', '.')
+                                else:
+                                    val = val.replace(',', '')
+                            elif ',' in val:
+                                val = val.replace(',', '.')
+                            elif val.count('.') > 1:
+                                # Eğer sadece nokta var ama birden fazlaysa ('378.369.873' gibi), kesin binlik ayırıcıdır
+                                val = val.replace('.', '')
+                            
+                            try:
+                                return float(val)
+                            except:
+                                return 0.0
                                     
                         for col in ['X', 'Y', 'Z']:
                             if col in df.columns:
-                                df[col] = df[col].astype(str).str.replace(',', '.').astype(float)
+                                df[col] = df[col].apply(safely_convert_to_float)
                         return df
 
                     df_h = temizle(hiz_csv, has_header)
