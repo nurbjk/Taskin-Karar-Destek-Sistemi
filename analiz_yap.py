@@ -211,44 +211,12 @@ def akilli_konum_analizi(gdf):
         tipler.append(res)
     return tipler
 
-def taskin_analizini_yap(gdf_binalar, df_h, df_d, buffer_size=6.0, csv_epsg=32635):
-    gdf_halkalar = gpd.GeoDataFrame(gdf_binalar[['BINA_ID']], geometry=gdf_binalar.buffer(buffer_size), crs=gdf_binalar.crs)
-    
-    # CSV koordinatlarını kullanıcının seçtiği epsg (UTM Zone) ile tanımla
-    pts_h = gpd.GeoDataFrame(df_h, geometry=gpd.points_from_xy(df_h['X'], df_h['Y']), crs=f"EPSG:{csv_epsg}")
-    pts_d = gpd.GeoDataFrame(df_d, geometry=gpd.points_from_xy(df_d['X'], df_d['Y']), crs=f"EPSG:{csv_epsg}")
-    
-    # Binalar ve noktalar farklı UTM zonlarındaysa, noktaları binaların zonuna çevir ki kesişebilsinler!
-    if pts_h.crs != gdf_binalar.crs:
-        pts_h = pts_h.to_crs(gdf_binalar.crs)
-    if pts_d.crs != gdf_binalar.crs:
-        pts_d = pts_d.to_crs(gdf_binalar.crs)
-        
-    join_h = gpd.sjoin(pts_h, gdf_halkalar, predicate='within')
-    
-    # Hata ayıklama (Kesişim yoksa kullanıcıya nedenini göster)
-    if len(join_h) == 0:
-        st.error(f"⚠️ HIZ NOKTALARI İLE BİNALAR KESİŞMİYOR! (Buffer: {buffer_size}m)")
-        st.warning(f"Binaların Merkez X-Y Aralığı: X({gdf_binalar.geometry.centroid.x.min():.0f} - {gdf_binalar.geometry.centroid.x.max():.0f}), Y({gdf_binalar.geometry.centroid.y.min():.0f} - {gdf_binalar.geometry.centroid.y.max():.0f})")
-        if not pts_h.empty:
-            st.warning(f"Hız Noktalarının X-Y Aralığı: X({pts_h.geometry.x.min():.0f} - {pts_h.geometry.x.max():.0f}), Y({pts_h.geometry.y.min():.0f} - {pts_h.geometry.y.max():.0f})")
-            st.info("İlk 3 Hız Noktası Verisi:")
-            st.dataframe(df_h.head(3))
-            
-    res_h = join_h[join_h['Z'] != 0].groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'HIZ'})
-    
-    join_d = gpd.sjoin(pts_d, gdf_halkalar, predicate='within')
-    
-    if len(join_d) == 0:
-        st.error(f"⚠️ DERİNLİK NOKTALARI İLE BİNALAR KESİŞMİYOR! (Buffer: {buffer_size}m)")
-        st.warning(f"Binaların Merkez X-Y Aralığı: X({gdf_binalar.geometry.centroid.x.min():.0f} - {gdf_binalar.geometry.centroid.x.max():.0f}), Y({gdf_binalar.geometry.centroid.y.min():.0f} - {gdf_binalar.geometry.centroid.y.max():.0f})")
-        if not pts_d.empty:
-            st.warning(f"Derinlik Noktalarının X-Y Aralığı: X({pts_d.geometry.x.min():.0f} - {pts_d.geometry.x.max():.0f}), Y({pts_d.geometry.y.min():.0f} - {pts_d.geometry.y.max():.0f})")
-            st.info("İlk 3 Derinlik Noktası Verisi:")
-            st.dataframe(df_d.head(3))
-            
-    res_d = join_d[join_d['Z'] != 0].groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'DERIN'})
-    
+def taskin_analizini_yap(gdf_binalar, df_h, df_d):
+    gdf_halkalar = gpd.GeoDataFrame(gdf_binalar[['BINA_ID']], geometry=gdf_binalar.buffer(1), crs=gdf_binalar.crs)
+    pts_h = gpd.GeoDataFrame(df_h, geometry=gpd.points_from_xy(df_h.X, df_h.Y), crs=gdf_binalar.crs)
+    pts_d = gpd.GeoDataFrame(df_d, geometry=gpd.points_from_xy(df_d.X, df_d.Y), crs=gdf_binalar.crs)
+    res_h = gpd.sjoin(pts_h, gdf_halkalar, predicate='within').groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'HIZ'})
+    res_d = gpd.sjoin(pts_d, gdf_halkalar, predicate='within').groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'DERIN'})
     return pd.merge(res_h, res_d, on='BINA_ID', how='outer').fillna(0)
 
 def yapisal_risk(d):
@@ -310,16 +278,6 @@ with st.sidebar:
     with st.expander("💰 Birim Maliyetleri Düzenle", expanded=True):
         konut_f = st.number_input("Konut (TL/m²)", value=30000, step=1000)
         ticari_f = st.number_input("Ticari (TL/m²)", value=45000, step=1000)
-    with st.expander("⚙️ Veri ve Analiz Ayarları", expanded=True):
-        buffer_size = st.number_input("Tampon Bölge (Buffer) - Metre", value=6.0, step=1.0)
-        has_header = st.checkbox("CSV dosyalarında başlık satırı var", value=False)
-        csv_epsg = st.selectbox(
-            "Nokta Verileri UTM Zonu",
-            options=[32635, 32636, 32637, 32638],
-            format_func=lambda x: f"Zone {x-32600}N (EPSG:{x})",
-            index=0,
-            help="Eğer hız/derinlik verileriniz haritada kesişmiyorsa (0 çıkıyorsa) farklı bir UTM dilimindedir. Burayı değiştirin."
-        )
     st.markdown("---")
     st.info("📊 Verilerinizi yükledikten sonra 'Analizi Başlat' butonuna tıklayın.")
 
@@ -330,15 +288,14 @@ with st.expander("📢 Veri Hazırlama Kılavuzu (Kritik Uyarılar)", expanded=F
         st.markdown("""
         **🏢 Bina Verisi (ZIP):**
         - Google Earth vb. üzerinden **poligon** olarak çizilmiş binaları içermelidir.
-        - Sisteme yüklenen binalara ayarlarda belirlediğiniz kadar (varsayılan 6 metre) **buffer (tampon)** uygulanır.
+        - Sisteme yüklenen binalara arka planda otomatik **1 metre buffer** uygulanır.
         - Dosya içinde `.shp`, `.dbf`, `.shx`, `.prj` mutlaka bulunmalı.
         - Binalarınız hangi projeksiyonda olursa olsun, metrik hesaplamalar için sistem tarafından otomatik olarak **UTM Zone 35N (EPSG:32635)** formatına dönüştürülür.
         """)
     with c_k2:
         st.markdown("""
         **📊 Hız/Derinlik (CSV):**
-        - Sütun başlıkları sığmıyorsa (verilerde başlık yoksa), sol panelden 'başlık var' seçeneğini kapalı tutun.
-        - Başlık varsa kesinlikle büyük harf **X, Y, Z** olmalıdır.
+        - Sütun başlıkları kesinlikle büyük harf **X, Y, Z** olmalıdır.
         - Ayraç olarak **noktalı virgül ( ; )** kullanılmalıdır.
         - Ondalık sayılar için virgül (0,50) kullanılabilir.
         """)
@@ -360,75 +317,20 @@ if bina_zip and hiz_csv and derin_csv:
                     z_path = os.path.join(tmpdir, "data.zip")
                     with open(z_path, "wb") as f: f.write(bina_zip.getbuffer())
                     
-                    def temizle(file, has_header_flag):
-                        # Pandas'ın kısıtlamalarını ve ayraç bulma hatalarını kökten çözmek için,
-                        # dosyayı ham metin olarak satır satır okuyup kendimiz bölüyoruz.
-                        content = file.getvalue().decode('utf-8', errors='ignore').strip()
-                        if not content:
-                            return pd.DataFrame(columns=['X', 'Y', 'Z'])
-                            
-                        lines = content.split('\n')
-                        
-                        # Eğer kullanıcı başlık var dediyse, ilk satırı atla. X, Y, Z olmasına gerek yok.
-                        if has_header_flag and len(lines) > 0:
-                            lines = lines[1:]
-                            
-                        import re
-                        parsed_data = []
-                        for line in lines:
-                            line = line.strip().replace('"', '').replace("'", "")
-                            if not line: continue
-                            
-                            if ';' in line:
-                                parts = line.split(';')
-                            elif '\t' in line:
-                                parts = line.split('\t')
-                            elif line.count(',') >= 2 and '.' in line:
-                                parts = line.split(',')
-                            else:
-                                # İçinde hiçbir şey yoksa sadece boşluklarla ayrılmıştır (senin ekran görüntüsündeki gibi)
-                                parts = re.split(r'\s+', line)
-                                
-                            if len(parts) >= 3:
-                                parsed_data.append([parts[0], parts[1], parts[2]])
-                                
-                        if not parsed_data:
-                            return pd.DataFrame(columns=['X', 'Y', 'Z'])
-                            
-                        df = pd.DataFrame(parsed_data, columns=['X', 'Y', 'Z'])
-
-                        def safely_convert_to_float(val):
-                            if pd.isna(val) or str(val).strip() == '': return 0.0
-                            val = str(val).strip()
-                            if '.' in val and ',' in val:
-                                if val.rfind(',') > val.rfind('.'):
-                                    val = val.replace('.', '').replace(',', '.')
-                                else:
-                                    val = val.replace(',', '')
-                            elif ',' in val:
-                                val = val.replace(',', '.')
-                            elif val.count('.') > 1:
-                                val = val.replace('.', '')
-                            
-                            try:
-                                return float(val)
-                            except:
-                                return 0.0
-                                    
+                    def temizle(file):
+                        df = pd.read_csv(file, sep=';')
+                       
+                        df.columns = [c.strip().upper() for c in df.columns]
                         for col in ['X', 'Y', 'Z']:
-                            df[col] = df[col].apply(safely_convert_to_float)
-                            
-                        if len(df) > 0 and df['X'].mean() > df['Y'].mean():
-                            df['X'], df['Y'] = df['Y'], df['X']
-                            
+                            if col in df.columns:
+                                df[col] = df[col].astype(str).str.replace(',', '.').astype(float)
                         return df
 
-                    df_h = temizle(hiz_csv, has_header)
-                    df_d = temizle(derin_csv, has_header)
+                    df_h, df_d = temizle(hiz_csv), temizle(derin_csv)
                     gdf = onarma_ve_numaralandirma(gpd.read_file(z_path))
                     gdf['TIP'] = akilli_konum_analizi(gdf)
                     
-                    analiz_res = taskin_analizini_yap(gdf, df_h, df_d, buffer_size=buffer_size, csv_epsg=csv_epsg)
+                    analiz_res = taskin_analizini_yap(gdf, df_h, df_d)
                     final = gdf.merge(analiz_res, on='BINA_ID', how='left').fillna(0)
                     final['RISK'] = final.apply(lambda r: defra_etiket(r['DERIN'], r['HIZ']), axis=1)
                     final['YAPI_RISKI'] = final['DERIN'].apply(yapisal_risk)
@@ -457,9 +359,7 @@ if st.session_state.get('analiz_tamam', False):
     with t1:
         gw = final.to_crs(epsg=4326)
         m = folium.Map(location=[gw.geometry.centroid.y.mean(), gw.geometry.centroid.x.mean()], 
-                       zoom_start=16, 
-                       tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-                       attr='Esri Satellite')
+                       zoom_start=18, tiles='CartoDB Positron')
         
         for _, r in gw.iterrows():
             color = {'T4-CokYuk': '#ef4444', 'T3-Yuksek': '#f97316', 'T2-Hafif': '#eab308', 'T1-Dusuk': '#22c55e'}.get(r['RISK'], 'gray')
@@ -493,56 +393,7 @@ if st.session_state.get('analiz_tamam', False):
             
             folium.GeoJson(r.geometry, style_function=lambda x, c=color: {'fillColor': c, 'color': c, 'weight': 1, 'fillOpacity': 0.6},
                            popup=popup).add_to(m)
-            
-            # Poligon üzerine BINA_ID yazdırma
-            folium.map.Marker(
-                [r.geometry.centroid.y, r.geometry.centroid.x],
-                icon=folium.features.DivIcon(
-                    html=f'<div style="font-size: 10pt; color: black; font-weight: bold; text-align: center; transform: translate(-50%, -50%); text-shadow: 1px 1px 2px white;">{r["BINA_ID"]}</div>'
-                )
-            ).add_to(m)
-                           
-        from branca.element import Template, MacroElement
-        
-        horizontal_legend_html = """
-        <div style="display: flex; justify-content: center; align-items: center; padding: 15px; 
-                    background-color: #0f172a; border-radius: 8px; margin-top: 10px; 
-                    border: 1px solid rgba(255,255,255,0.1); flex-wrap: wrap; gap: 20px;">
-            <strong style="color: #e2e8f0; font-size: 15px;">Hayati Risk (Hazard Zones):</strong>
-            <div style="display: flex; align-items: center;"><div style="width: 30px; height: 15px; background-color: gray; margin-right: 8px; border-radius: 3px;"></div> <span style="color: #e2e8f0; font-size: 14px;">Yok</span></div>
-            <div style="display: flex; align-items: center;"><div style="width: 30px; height: 15px; background-color: #22c55e; margin-right: 8px; border-radius: 3px;"></div> <span style="color: #e2e8f0; font-size: 14px;">T1-Dusuk</span></div>
-            <div style="display: flex; align-items: center;"><div style="width: 30px; height: 15px; background-color: #eab308; margin-right: 8px; border-radius: 3px;"></div> <span style="color: #e2e8f0; font-size: 14px;">T2-Hafif</span></div>
-            <div style="display: flex; align-items: center;"><div style="width: 30px; height: 15px; background-color: #f97316; margin-right: 8px; border-radius: 3px;"></div> <span style="color: #e2e8f0; font-size: 14px;">T3-Yuksek</span></div>
-            <div style="display: flex; align-items: center;"><div style="width: 30px; height: 15px; background-color: #ef4444; margin-right: 8px; border-radius: 3px;"></div> <span style="color: #e2e8f0; font-size: 14px;">T4-CokYuk</span></div>
-        </div>
-        """
-        
-        # İndirilecek HTML haritasında görünmesi için
-        legend_template = """
-        {% macro html(this, kwargs) %}
-        <div style="position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 9999; min-width: 600px; opacity: 0.9;">
-        """ + horizontal_legend_html + """
-        </div>
-        {% endmacro %}
-        """
-        macro = MacroElement()
-        macro._template = Template(legend_template)
-        m.get_root().add_child(macro)
-        
-        # Haritayı çizdir
-        st.components.v1.html(m._repr_html_(), height=500)
-        
-        # Lejantı Streamlit'te garantili görünmesi için doğrudan haritanın altına ekle
-        st.markdown(horizontal_legend_html, unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        st.download_button(
-            label="🗺️  Haritayı İndir (HTML)",
-            data=m.get_root().render(),
-            file_name="Taskin_Analiz_Haritasi.html",
-            mime="text/html",
-            use_container_width=True
-        )
+        st.components.v1.html(m._repr_html_(), height=650)
 
     with t2:
         st.info("💡 **Aşağıdaki tablodan 'TIP' sütununa çift tıklayarak** binanın kullanım türünü değiştirebilirsiniz.")
@@ -590,56 +441,4 @@ if st.session_state.get('analiz_tamam', False):
             worksheet.set_column('D:E', 10, dec_format) # Hız ve Derinlik
             worksheet.set_column('H:H', 18, num_format) # Maliyet
             
-        # SHP Dışa Aktarma
-        import zipfile
-        def create_shp_zip(gdf):
-            tmp_dir = tempfile.mkdtemp()
-            shp_path = os.path.join(tmp_dir, "analiz_sonuclari.shp")
-            
-            export_gdf = gdf.copy()
-            
-            # Global Mapper için renk kodlarını belirle (COLOR kolonu GM tarafından otomatik tanınır)
-            def get_gm_color(risk):
-                c_map = {
-                    'T4-CokYuk': 'RGB(239,68,68)',
-                    'T3-Yuksek': 'RGB(249,115,22)',
-                    'T2-Hafif': 'RGB(234,179,8)',
-                    'T1-Dusuk': 'RGB(34,197,94)'
-                }
-                return c_map.get(risk, 'RGB(128,128,128)')
-                
-            export_gdf['COLOR'] = export_gdf['RISK'].apply(get_gm_color)
-            
-            # Global Mapper'da otomatik isim göstermesi için LABEL ekle
-            export_gdf['LABEL'] = export_gdf['BINA_ID'].astype(str)
-            
-            # Sadece gerekli kolonları al
-            istenen_kolonlar = ['BINA_ID', 'LABEL', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'YAPI_RISKI', 'MALIYET_TL', 'COLOR', 'geometry']
-            mevcut_kolonlar = [c for c in istenen_kolonlar if c in export_gdf.columns]
-            export_gdf = export_gdf[mevcut_kolonlar].copy()
-            
-            # Global Mapper'da string olarak formatlı gözükmesi için yuvarlama ve binlik ayırıcı
-            if 'ALAN_m2' in export_gdf.columns: export_gdf['ALAN_m2'] = export_gdf['ALAN_m2'].apply(lambda x: f"{x:.2f}")
-            if 'HIZ' in export_gdf.columns: export_gdf['HIZ'] = export_gdf['HIZ'].apply(lambda x: f"{x:.2f}")
-            if 'DERIN' in export_gdf.columns: export_gdf['DERIN'] = export_gdf['DERIN'].apply(lambda x: f"{x:.2f}")
-            if 'MALIYET_TL' in export_gdf.columns: export_gdf['MALIYET_TL'] = export_gdf['MALIYET_TL'].apply(lambda x: f"{x:,.0f}".replace(",", "."))
-            
-            for col in export_gdf.columns:
-                if export_gdf[col].dtype == 'object':
-                    export_gdf[col] = export_gdf[col].astype(str)
-                    
-            export_gdf.to_file(shp_path, driver="ESRI Shapefile")
-            
-            zip_buffer = io.BytesIO()
-            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for root, dirs, files in os.walk(tmp_dir):
-                    for file in files:
-                        zipf.write(os.path.join(root, file), file)
-            return zip_buffer.getvalue()
-
-        col_dl1, col_dl2 = st.columns(2)
-        with col_dl1:
-            st.download_button("📥 Excel Raporunu İndir", buf.getvalue(), "Taskin_Analiz_Raporu.xlsx", use_container_width=True)
-        with col_dl2:
-            shp_data = create_shp_zip(final)
-            st.download_button("🗺️ Shapefile (SHP) İndir", shp_data, "Taskin_Analiz_SHP.zip", use_container_width=True)
+        st.download_button("📥 Excel Raporunu İndir", buf.getvalue(), "Taskin_Analiz_Raporu.xlsx", use_container_width=True)
