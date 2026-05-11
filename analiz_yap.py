@@ -327,28 +327,40 @@ if bina_zip and hiz_csv and derin_csv:
                     with open(z_path, "wb") as f: f.write(bina_zip.getbuffer())
                     
                     def temizle(file, has_header_flag):
-                        file.seek(0)
-                        try:
-                            if has_header_flag:
-                                df = pd.read_csv(file, sep=None, engine='python', dtype=str)
-                            else:
-                                df = pd.read_csv(file, sep=None, engine='python', header=None, dtype=str)
-                        except:
-                            file.seek(0)
-                            df = pd.read_csv(file, sep=';', header=None, dtype=str)
-                            
-                        if df.shape[1] < 3:
-                            file.seek(0)
-                            try:
-                                df = pd.read_csv(file, sep=';', header=None, dtype=str)
-                            except: pass
-                            
-                        # Başlık olsa da olmasa da, X Y Z yazsa da yazmasa da İLK 3 SÜTUNU AL
-                        if df.shape[1] >= 3:
-                            df = df.iloc[:, :3]
-                            df.columns = ['X', 'Y', 'Z']
-                        else:
+                        content = file.getvalue().decode('utf-8', errors='ignore').strip()
+                        if not content:
                             return pd.DataFrame(columns=['X', 'Y', 'Z'])
+                            
+                        lines = content.split('\n')
+                        
+                        # Eğer kullanıcı başlık var dediyse, İLK SATIRI DİREKT ATLA. (İçinde X Y Z yazmasına gerek yok)
+                        if has_header_flag and len(lines) > 0:
+                            lines = lines[1:]
+                            
+                        import re
+                        parsed_data = []
+                        for line in lines:
+                            line = line.strip().replace('"', '').replace("'", "")
+                            if not line: continue
+                            
+                            # Herhangi bir formata karşı hazırlıklı ayırıcı (Boşluk, noktalı virgül, tab)
+                            if ';' in line:
+                                parts = line.split(';')
+                            elif '\t' in line:
+                                parts = line.split('\t')
+                            elif line.count(',') >= 2 and '.' in line:
+                                parts = line.split(',')
+                            else:
+                                parts = re.split(r'\s+', line)
+                                
+                            # BAŞLIK, HARF VEYA BOŞLUK FARK ETMEKSİZİN İLK 3 SÜTUNU AL
+                            if len(parts) >= 3:
+                                parsed_data.append([parts[0], parts[1], parts[2]])
+                                
+                        if not parsed_data:
+                            return pd.DataFrame(columns=['X', 'Y', 'Z'])
+                            
+                        df = pd.DataFrame(parsed_data, columns=['X', 'Y', 'Z'])
 
                         def safely_convert_to_float(val):
                             if pd.isna(val) or str(val).strip() == '': return 0.0
@@ -370,7 +382,8 @@ if bina_zip and hiz_csv and derin_csv:
                         for col in ['X', 'Y', 'Z']:
                             df[col] = df[col].apply(safely_convert_to_float)
                             
-                        # Eğer kullanıcı X ve Y'yi Excel'de ters kaydettiyse (Türkiye UTM) otomatik düzelt
+                        # Türkiye koordinatlarında Y ekseni her zaman X ekseninden daha büyük bir sayıdır (örn: 4 milyon vs 600 bin)
+                        # Eğer kullanıcı X ve Y'yi ters kaydettiyse, otomatik olarak yerlerini değiştir!
                         if len(df) > 0 and df['X'].mean() > df['Y'].mean():
                             df['X'], df['Y'] = df['Y'], df['X']
                             
