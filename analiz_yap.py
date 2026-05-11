@@ -387,10 +387,12 @@ if st.session_state.get('analiz_tamam', False):
     with t1:
         gw = final.to_crs(epsg=4326)
         m = folium.Map(location=[gw.geometry.centroid.y.mean(), gw.geometry.centroid.x.mean()], 
-                       zoom_start=18, tiles='CartoDB Positron')
+                       zoom_start=16, 
+                       tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                       attr='Esri Satellite')
         
         for _, r in gw.iterrows():
-            color = {'T4-CokYuk': '#ef4444', 'T3-Yuksek': '#f97316', 'T2-Hafif': '#eab308', 'T1-Dusuk': '#22c55e'}.get(r['RISK'], 'gray')
+            color = {'T4-CokYuk': '#ff0000', 'T3-Yuksek': '#2563eb', 'T2-Hafif': '#00ff00', 'T1-Dusuk': '#00ffff'}.get(r['RISK'], '#bbf7d0')
             
             m_fmt = "{:,.0f}".format(r['MALIYET_TL']).replace(",", ".")
             h_fmt = "{:.2f}".format(r['HIZ'])
@@ -431,16 +433,16 @@ if st.session_state.get('analiz_tamam', False):
                      padding: 10px; font-size: 14px; z-index: 9999;
                      backdrop-filter: blur(5px);">
              <strong style="color:#38bdf8; margin-bottom:10px; display:block;">Hayati Risk</strong>
-             <i style="background:#ef4444; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%;"></i> T4-CokYuk<br>
-             <i style="background:#f97316; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T3-Yuksek<br>
-             <i style="background:#eab308; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T2-Hafif<br>
-             <i style="background:#22c55e; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T1-Dusuk<br>
-             <i style="background:gray; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> Yok<br>
+             <i style="background:#ff0000; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%;"></i> T4-CokYuk<br>
+             <i style="background:#2563eb; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T3-Yuksek<br>
+             <i style="background:#00ff00; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T2-Hafif<br>
+             <i style="background:#00ffff; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T1-Dusuk<br>
+             <i style="background:#bbf7d0; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> Yok<br>
          </div>
          '''
         m.get_root().html.add_child(folium.Element(legend_html))
         
-        st.components.v1.html(m._repr_html_(), height=650)
+        st.components.v1.html(m._repr_html_(), height=500)
 
     with t2:
         st.info("💡 **Aşağıdaki tablodan 'TIP' sütununa çift tıklayarak** binanın kullanım türünü değiştirebilirsiniz.")
@@ -493,10 +495,20 @@ if st.session_state.get('analiz_tamam', False):
         def create_shp_zip(gdf):
             tmp_dir = tempfile.mkdtemp()
             shp_path = os.path.join(tmp_dir, "analiz_sonuclari.shp")
-            export_gdf = gdf.copy()
+            
+            # Sadece gerekli kolonları al ve küsuratları 2 basamakla sınırla
+            istenen_kolonlar = ['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'YAPI_RISKI', 'MALIYET_TL', 'geometry']
+            mevcut_kolonlar = [c for c in istenen_kolonlar if c in gdf.columns]
+            export_gdf = gdf[mevcut_kolonlar].copy()
+            
+            if 'ALAN_m2' in export_gdf.columns: export_gdf['ALAN_m2'] = export_gdf['ALAN_m2'].round(2)
+            if 'HIZ' in export_gdf.columns: export_gdf['HIZ'] = export_gdf['HIZ'].round(2)
+            if 'DERIN' in export_gdf.columns: export_gdf['DERIN'] = export_gdf['DERIN'].round(2)
+            
             for col in export_gdf.columns:
                 if export_gdf[col].dtype == 'object':
                     export_gdf[col] = export_gdf[col].astype(str)
+                    
             export_gdf.to_file(shp_path, driver="ESRI Shapefile")
             
             zip_buffer = io.BytesIO()
