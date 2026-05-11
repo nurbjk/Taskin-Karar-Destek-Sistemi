@@ -220,11 +220,11 @@ def taskin_analizini_yap(gdf_binalar, df_h, df_d, buffer_size=6.0):
     
     # Hata ayıklama (Kesişim yoksa kullanıcıya nedenini göster)
     if len(join_h) == 0:
-        st.error(f"⚠️ HIZ NOKTALARI İLE BİNALAR KESİŞMİYOR! Noktalar binaların {buffer_size}m yakınına bile düşmüyor.")
-        st.warning(f"Binaların X Aralığı: {gdf_binalar.geometry.centroid.x.min():.0f} - {gdf_binalar.geometry.centroid.x.max():.0f}")
-        st.warning(f"Noktaların X Aralığı: {pts_h.geometry.x.min():.0f} - {pts_h.geometry.x.max():.0f}")
-        if not df_h.empty:
-            st.info("Okunan ilk 3 hız verisi (X, Y, Z):")
+        st.error(f"⚠️ HIZ NOKTALARI İLE BİNALAR KESİŞMİYOR! (Buffer: {buffer_size}m)")
+        st.warning(f"Binaların Merkez X-Y Aralığı: X({gdf_binalar.geometry.centroid.x.min():.0f} - {gdf_binalar.geometry.centroid.x.max():.0f}), Y({gdf_binalar.geometry.centroid.y.min():.0f} - {gdf_binalar.geometry.centroid.y.max():.0f})")
+        if not pts_h.empty:
+            st.warning(f"Hız Noktalarının X-Y Aralığı: X({pts_h.geometry.x.min():.0f} - {pts_h.geometry.x.max():.0f}), Y({pts_h.geometry.y.min():.0f} - {pts_h.geometry.y.max():.0f})")
+            st.info("İlk 3 Hız Noktası Verisi:")
             st.dataframe(df_h.head(3))
             
     res_h = join_h[join_h['Z'] != 0].groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'HIZ'})
@@ -232,8 +232,13 @@ def taskin_analizini_yap(gdf_binalar, df_h, df_d, buffer_size=6.0):
     join_d = gpd.sjoin(pts_d, gdf_halkalar, predicate='within')
     
     if len(join_d) == 0:
-        st.error(f"⚠️ DERİNLİK NOKTALARI İLE BİNALAR KESİŞMİYOR!")
-        
+        st.error(f"⚠️ DERİNLİK NOKTALARI İLE BİNALAR KESİŞMİYOR! (Buffer: {buffer_size}m)")
+        st.warning(f"Binaların Merkez X-Y Aralığı: X({gdf_binalar.geometry.centroid.x.min():.0f} - {gdf_binalar.geometry.centroid.x.max():.0f}), Y({gdf_binalar.geometry.centroid.y.min():.0f} - {gdf_binalar.geometry.centroid.y.max():.0f})")
+        if not pts_d.empty:
+            st.warning(f"Derinlik Noktalarının X-Y Aralığı: X({pts_d.geometry.x.min():.0f} - {pts_d.geometry.x.max():.0f}), Y({pts_d.geometry.y.min():.0f} - {pts_d.geometry.y.max():.0f})")
+            st.info("İlk 3 Derinlik Noktası Verisi:")
+            st.dataframe(df_d.head(3))
+            
     res_d = join_d[join_d['Z'] != 0].groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'DERIN'})
     
     return pd.merge(res_h, res_d, on='BINA_ID', how='outer').fillna(0)
