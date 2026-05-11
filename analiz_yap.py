@@ -211,11 +211,19 @@ def akilli_konum_analizi(gdf):
         tipler.append(res)
     return tipler
 
-def taskin_analizini_yap(gdf_binalar, df_h, df_d, buffer_size=6.0):
+def taskin_analizini_yap(gdf_binalar, df_h, df_d, buffer_size=6.0, csv_epsg=32635):
     gdf_halkalar = gpd.GeoDataFrame(gdf_binalar[['BINA_ID']], geometry=gdf_binalar.buffer(buffer_size), crs=gdf_binalar.crs)
-    pts_h = gpd.GeoDataFrame(df_h, geometry=gpd.points_from_xy(df_h['X'], df_h['Y']), crs=gdf_binalar.crs)
-    pts_d = gpd.GeoDataFrame(df_d, geometry=gpd.points_from_xy(df_d['X'], df_d['Y']), crs=gdf_binalar.crs)
     
+    # CSV koordinatlarını kullanıcının seçtiği epsg (UTM Zone) ile tanımla
+    pts_h = gpd.GeoDataFrame(df_h, geometry=gpd.points_from_xy(df_h['X'], df_h['Y']), crs=f"EPSG:{csv_epsg}")
+    pts_d = gpd.GeoDataFrame(df_d, geometry=gpd.points_from_xy(df_d['X'], df_d['Y']), crs=f"EPSG:{csv_epsg}")
+    
+    # Binalar ve noktalar farklı UTM zonlarındaysa, noktaları binaların zonuna çevir ki kesişebilsinler!
+    if pts_h.crs != gdf_binalar.crs:
+        pts_h = pts_h.to_crs(gdf_binalar.crs)
+    if pts_d.crs != gdf_binalar.crs:
+        pts_d = pts_d.to_crs(gdf_binalar.crs)
+        
     join_h = gpd.sjoin(pts_h, gdf_halkalar, predicate='within')
     
     # Hata ayıklama (Kesişim yoksa kullanıcıya nedenini göster)
@@ -304,7 +312,14 @@ with st.sidebar:
         ticari_f = st.number_input("Ticari (TL/m²)", value=45000, step=1000)
     with st.expander("⚙️ Veri ve Analiz Ayarları", expanded=True):
         buffer_size = st.number_input("Tampon Bölge (Buffer) - Metre", value=6.0, step=1.0)
-        has_header = st.checkbox("CSV dosyalarında X, Y, Z başlıkları var", value=False)
+        has_header = st.checkbox("CSV dosyalarında başlık satırı var", value=False)
+        csv_epsg = st.selectbox(
+            "Nokta Verileri UTM Zonu",
+            options=[32635, 32636, 32637, 32638],
+            format_func=lambda x: f"Zone {x-32600}N (EPSG:{x})",
+            index=0,
+            help="Eğer hız/derinlik verileriniz haritada kesişmiyorsa (0 çıkıyorsa) farklı bir UTM dilimindedir. Burayı değiştirin."
+        )
     st.markdown("---")
     st.info("📊 Verilerinizi yükledikten sonra 'Analizi Başlat' butonuna tıklayın.")
 
@@ -413,7 +428,7 @@ if bina_zip and hiz_csv and derin_csv:
                     gdf = onarma_ve_numaralandirma(gpd.read_file(z_path))
                     gdf['TIP'] = akilli_konum_analizi(gdf)
                     
-                    analiz_res = taskin_analizini_yap(gdf, df_h, df_d, buffer_size=buffer_size)
+                    analiz_res = taskin_analizini_yap(gdf, df_h, df_d, buffer_size=buffer_size, csv_epsg=csv_epsg)
                     final = gdf.merge(analiz_res, on='BINA_ID', how='left').fillna(0)
                     final['RISK'] = final.apply(lambda r: defra_etiket(r['DERIN'], r['HIZ']), axis=1)
                     final['YAPI_RISKI'] = final['DERIN'].apply(yapisal_risk)
