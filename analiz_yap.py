@@ -218,9 +218,17 @@ def taskin_analizini_yap(gdf_binalar, df_h, df_d, buffer_size=6.0):
     pts_d = gpd.GeoDataFrame(df_d, geometry=gpd.points_from_xy(df_d['X'], df_d['Y']), crs=gdf_binalar.crs)
         
     join_h = gpd.sjoin(pts_h, gdf_halkalar, predicate='within')
+    if len(join_h) == 0:
+        st.error("⚠️ HIZ NOKTALARI BİNALARLA KESİŞMEDİ! Lütfen aşağıdaki tablodan sistemin CSV dosyanızdan hangi sütunları okuduğunu kontrol edin:")
+        if not df_h.empty: st.dataframe(df_h.head())
+        
     res_h = join_h[join_h['Z'] != 0].groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'HIZ'})
     
     join_d = gpd.sjoin(pts_d, gdf_halkalar, predicate='within')
+    if len(join_d) == 0:
+        st.error("⚠️ DERİNLİK NOKTALARI BİNALARLA KESİŞMEDİ! Lütfen aşağıdaki tablodan sistemin CSV dosyanızdan hangi sütunları okuduğunu kontrol edin:")
+        if not df_d.empty: st.dataframe(df_d.head())
+        
     res_d = join_d[join_d['Z'] != 0].groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'DERIN'})
     
     return pd.merge(res_h, res_d, on='BINA_ID', how='outer').fillna(0)
@@ -286,7 +294,7 @@ with st.sidebar:
         ticari_f = st.number_input("Ticari (TL/m²)", value=45000, step=1000)
     with st.expander("⚙️ Veri ve Analiz Ayarları", expanded=True):
         buffer_size = st.number_input("Tampon Bölge (Buffer) - Metre", value=6.0, step=1.0)
-        has_header = st.checkbox("CSV dosyalarında başlık satırı var", value=False)
+        has_header = st.checkbox("CSV dosyalarında X,Y,Z satırı var", value=False)
     st.markdown("---")
     st.info("📊 Verilerinizi yükledikten sonra 'Analizi Başlat' butonuna tıklayın.")
 
