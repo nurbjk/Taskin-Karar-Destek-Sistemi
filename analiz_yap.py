@@ -183,9 +183,7 @@ def akilli_konum_analizi(gdf):
     gdf_wgs84 = gdf.to_crs(epsg=4326)
     bbox = gdf_wgs84.total_bounds
     try:
-        # Sadece ticari, sanayi ve perakende binalarını/alanlarını sorgulayalım
-        # OSM'de binalar her zaman "commercial" olarak işaretlenmeyebilir, 
-        # dükkan (shop), ofis veya çeşitli tesis (amenity) etiketlerini de ekliyoruz.
+        
         tags = {
             "building": ["commercial", "industrial", "retail", "warehouse", "supermarket", "factory", "office"],
             "landuse": ["commercial", "industrial"],
@@ -213,12 +211,17 @@ def akilli_konum_analizi(gdf):
         tipler.append(res)
     return tipler
 
-def taskin_analizini_yap(gdf_binalar, df_h, df_d):
-    gdf_halkalar = gpd.GeoDataFrame(gdf_binalar[['BINA_ID']], geometry=gdf_binalar.buffer(1), crs=gdf_binalar.crs)
+def taskin_analizini_yap(gdf_binalar, df_h, df_d, buffer_size=6.0):
+    gdf_halkalar = gpd.GeoDataFrame(gdf_binalar[['BINA_ID']], geometry=gdf_binalar.buffer(buffer_size), crs=gdf_binalar.crs)
     pts_h = gpd.GeoDataFrame(df_h, geometry=gpd.points_from_xy(df_h.X, df_h.Y), crs=gdf_binalar.crs)
     pts_d = gpd.GeoDataFrame(df_d, geometry=gpd.points_from_xy(df_d.X, df_d.Y), crs=gdf_binalar.crs)
-    res_h = gpd.sjoin(pts_h, gdf_halkalar, predicate='within').groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'HIZ'})
-    res_d = gpd.sjoin(pts_d, gdf_halkalar, predicate='within').groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'DERIN'})
+    
+    join_h = gpd.sjoin(pts_h, gdf_halkalar, predicate='within')
+    res_h = join_h[join_h['Z'] != 0].groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'HIZ'})
+    
+    join_d = gpd.sjoin(pts_d, gdf_halkalar, predicate='within')
+    res_d = join_d[join_d['Z'] != 0].groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'DERIN'})
+    
     return pd.merge(res_h, res_d, on='BINA_ID', how='outer').fillna(0)
 
 def yapisal_risk(d):
@@ -280,6 +283,9 @@ with st.sidebar:
     with st.expander("💰 Birim Maliyetleri Düzenle", expanded=True):
         konut_f = st.number_input("Konut (TL/m²)", value=30000, step=1000)
         ticari_f = st.number_input("Ticari (TL/m²)", value=45000, step=1000)
+    with st.expander("⚙️ Veri ve Analiz Ayarları", expanded=True):
+        buffer_size = st.number_input("Tampon Bölge (Buffer) - Metre", value=6.0, step=1.0)
+        has_header = st.checkbox("CSV dosyalarında X, Y, Z başlıkları var", value=False)
     st.markdown("---")
     st.info("📊 Verilerinizi yükledikten sonra 'Analizi Başlat' butonuna tıklayın.")
 
@@ -290,14 +296,15 @@ with st.expander("📢 Veri Hazırlama Kılavuzu (Kritik Uyarılar)", expanded=F
         st.markdown("""
         **🏢 Bina Verisi (ZIP):**
         - Google Earth vb. üzerinden **poligon** olarak çizilmiş binaları içermelidir.
-        - Sisteme yüklenen binalara arka planda otomatik **1 metre buffer** uygulanır.
+        - Sisteme yüklenen binalara ayarlarda belirlediğiniz kadar (varsayılan 6 metre) **buffer (tampon)** uygulanır.
         - Dosya içinde `.shp`, `.dbf`, `.shx`, `.prj` mutlaka bulunmalı.
         - Binalarınız hangi projeksiyonda olursa olsun, metrik hesaplamalar için sistem tarafından otomatik olarak **UTM Zone 35N (EPSG:32635)** formatına dönüştürülür.
         """)
     with c_k2:
         st.markdown("""
         **📊 Hız/Derinlik (CSV):**
-        - Sütun başlıkları kesinlikle büyük harf **X, Y, Z** olmalıdır.
+        - Sütun başlıkları sığmıyorsa (verilerde başlık yoksa), sol panelden 'başlık var' seçeneğini kapalı tutun.
+        - Başlık varsa kesinlikle büyük harf **X, Y, Z** olmalıdır.
         - Ayraç olarak **noktalı virgül ( ; )** kullanılmalıdır.
         - Ondalık sayılar için virgül (0,50) kullanılabilir.
         """)
@@ -319,20 +326,39 @@ if bina_zip and hiz_csv and derin_csv:
                     z_path = os.path.join(tmpdir, "data.zip")
                     with open(z_path, "wb") as f: f.write(bina_zip.getbuffer())
                     
-                    def temizle(file):
-                        df = pd.read_csv(file, sep=';')
-                       
-                        df.columns = [c.strip().upper() for c in df.columns]
+                    def temizle(file, has_header_flag):
+                        file.seek(0)
+                        try:
+                            if has_header_flag:
+                                df = pd.read_csv(file, sep=';')
+                                df.columns = [str(c).strip().upper() for c in df.columns]
+                            else:
+                                df = pd.read_csv(file, sep=';', header=None)
+                                if df.shape[1] >= 3:
+                                    df = df.iloc[:, :3]
+                                    df.columns = ['X', 'Y', 'Z']
+                        except:
+                            file.seek(0)
+                            if has_header_flag:
+                                df = pd.read_csv(file)
+                                df.columns = [str(c).strip().upper() for c in df.columns]
+                            else:
+                                df = pd.read_csv(file, header=None)
+                                if df.shape[1] >= 3:
+                                    df = df.iloc[:, :3]
+                                    df.columns = ['X', 'Y', 'Z']
+                                    
                         for col in ['X', 'Y', 'Z']:
                             if col in df.columns:
                                 df[col] = df[col].astype(str).str.replace(',', '.').astype(float)
                         return df
 
-                    df_h, df_d = temizle(hiz_csv), temizle(derin_csv)
+                    df_h = temizle(hiz_csv, has_header)
+                    df_d = temizle(derin_csv, has_header)
                     gdf = onarma_ve_numaralandirma(gpd.read_file(z_path))
                     gdf['TIP'] = akilli_konum_analizi(gdf)
                     
-                    analiz_res = taskin_analizini_yap(gdf, df_h, df_d)
+                    analiz_res = taskin_analizini_yap(gdf, df_h, df_d, buffer_size=buffer_size)
                     final = gdf.merge(analiz_res, on='BINA_ID', how='left').fillna(0)
                     final['RISK'] = final.apply(lambda r: defra_etiket(r['DERIN'], r['HIZ']), axis=1)
                     final['YAPI_RISKI'] = final['DERIN'].apply(yapisal_risk)
@@ -395,6 +421,25 @@ if st.session_state.get('analiz_tamam', False):
             
             folium.GeoJson(r.geometry, style_function=lambda x, c=color: {'fillColor': c, 'color': c, 'weight': 1, 'fillOpacity': 0.6},
                            popup=popup).add_to(m)
+                           
+        # Harita Lejantı Ekleme
+        legend_html = '''
+         <div style="position: absolute; 
+                     bottom: 20px; right: 20px; width: 140px; height: 160px; 
+                     background-color: rgba(15, 23, 42, 0.85); color: #e2e8f0; 
+                     border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; 
+                     padding: 10px; font-size: 14px; z-index: 9999;
+                     backdrop-filter: blur(5px);">
+             <strong style="color:#38bdf8; margin-bottom:10px; display:block;">Hayati Risk</strong>
+             <i style="background:#ef4444; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%;"></i> T4-CokYuk<br>
+             <i style="background:#f97316; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T3-Yuksek<br>
+             <i style="background:#eab308; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T2-Hafif<br>
+             <i style="background:#22c55e; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T1-Dusuk<br>
+             <i style="background:gray; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> Yok<br>
+         </div>
+         '''
+        m.get_root().html.add_child(folium.Element(legend_html))
+        
         st.components.v1.html(m._repr_html_(), height=650)
 
     with t2:
@@ -443,4 +488,27 @@ if st.session_state.get('analiz_tamam', False):
             worksheet.set_column('D:E', 10, dec_format) # Hız ve Derinlik
             worksheet.set_column('H:H', 18, num_format) # Maliyet
             
-        st.download_button("📥 Excel Raporunu İndir", buf.getvalue(), "Taskin_Analiz_Raporu.xlsx", use_container_width=True)
+        # SHP Dışa Aktarma
+        import zipfile
+        def create_shp_zip(gdf):
+            tmp_dir = tempfile.mkdtemp()
+            shp_path = os.path.join(tmp_dir, "analiz_sonuclari.shp")
+            export_gdf = gdf.copy()
+            for col in export_gdf.columns:
+                if export_gdf[col].dtype == 'object':
+                    export_gdf[col] = export_gdf[col].astype(str)
+            export_gdf.to_file(shp_path, driver="ESRI Shapefile")
+            
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for root, dirs, files in os.walk(tmp_dir):
+                    for file in files:
+                        zipf.write(os.path.join(root, file), file)
+            return zip_buffer.getvalue()
+
+        col_dl1, col_dl2 = st.columns(2)
+        with col_dl1:
+            st.download_button("📥 Excel Raporunu İndir", buf.getvalue(), "Taskin_Analiz_Raporu.xlsx", use_container_width=True)
+        with col_dl2:
+            shp_data = create_shp_zip(final)
+            st.download_button("🗺️ Shapefile (SHP) İndir", shp_data, "Taskin_Analiz_SHP.zip", use_container_width=True)
