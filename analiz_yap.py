@@ -217,9 +217,23 @@ def taskin_analizini_yap(gdf_binalar, df_h, df_d, buffer_size=6.0):
     pts_d = gpd.GeoDataFrame(df_d, geometry=gpd.points_from_xy(df_d['X'], df_d['Y']), crs=gdf_binalar.crs)
     
     join_h = gpd.sjoin(pts_h, gdf_halkalar, predicate='within')
+    
+    # Hata ayıklama (Kesişim yoksa kullanıcıya nedenini göster)
+    if len(join_h) == 0:
+        st.error(f"⚠️ HIZ NOKTALARI İLE BİNALAR KESİŞMİYOR! Noktalar binaların {buffer_size}m yakınına bile düşmüyor.")
+        st.warning(f"Binaların X Aralığı: {gdf_binalar.geometry.centroid.x.min():.0f} - {gdf_binalar.geometry.centroid.x.max():.0f}")
+        st.warning(f"Noktaların X Aralığı: {pts_h.geometry.x.min():.0f} - {pts_h.geometry.x.max():.0f}")
+        if not df_h.empty:
+            st.info("Okunan ilk 3 hız verisi (X, Y, Z):")
+            st.dataframe(df_h.head(3))
+            
     res_h = join_h[join_h['Z'] != 0].groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'HIZ'})
     
     join_d = gpd.sjoin(pts_d, gdf_halkalar, predicate='within')
+    
+    if len(join_d) == 0:
+        st.error(f"⚠️ DERİNLİK NOKTALARI İLE BİNALAR KESİŞMİYOR!")
+        
     res_d = join_d[join_d['Z'] != 0].groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'DERIN'})
     
     return pd.merge(res_h, res_d, on='BINA_ID', how='outer').fillna(0)
