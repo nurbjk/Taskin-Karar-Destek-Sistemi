@@ -464,15 +464,6 @@ if st.session_state.get('analiz_tamam', False):
             
             folium.GeoJson(r.geometry, style_function=lambda x, c=color: {'fillColor': c, 'color': c, 'weight': 1, 'fillOpacity': 0.6},
                            popup=popup).add_to(m)
-                           
-            # Poligon üzerine BINA_ID yazdırma (Siyah renkli)
-            folium.map.Marker(
-                [r.geometry.centroid.y, r.geometry.centroid.x],
-                icon=folium.features.DivIcon(
-                    html=f'<div style="font-size: 10pt; color: black; font-weight: bold; text-align: center; transform: translate(-50%, -50%); text-shadow: 1px 1px 2px white;">{r["BINA_ID"]}</div>'
-                )
-            ).add_to(m)
-                           
         from branca.element import Template, MacroElement
         
         horizontal_legend_html = """
