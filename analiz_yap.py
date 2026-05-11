@@ -329,30 +329,51 @@ if bina_zip and hiz_csv and derin_csv:
                     def temizle(file, has_header_flag):
                         file.seek(0)
                         
-                        # Veriyi okurken ayracın ne olduğunu (virgül veya noktalı virgül) otomatik algılayıp okuyalım.
                         try:
+                            # sep=None ile Pandas'ın virgül, noktalı virgül veya boşluk ayracını kendi bulmasını sağlayalım
                             if has_header_flag:
-                                df = pd.read_csv(file, sep=';', dtype=str)
+                                df = pd.read_csv(file, sep=None, engine='python', dtype=str)
                             else:
-                                df = pd.read_csv(file, sep=';', header=None, dtype=str)
-                                
-                            # Eğer sütunlar ayrılamamışsa (örneğin ayraç virgülse)
-                            if df.shape[1] < 3:
-                                file.seek(0)
-                                if has_header_flag:
-                                    df = pd.read_csv(file, sep=',', dtype=str)
-                                else:
-                                    df = pd.read_csv(file, sep=',', header=None, dtype=str)
+                                df = pd.read_csv(file, sep=None, engine='python', header=None, dtype=str)
                         except:
                             file.seek(0)
-                            df = pd.read_csv(file, sep=',', header=None, dtype=str)
+                            df = pd.read_csv(file, sep=';', header=None, dtype=str)
 
-                        # CSV başlığı ne olursa olsun (veya yoksa) her zaman ilk 3 sütunu X, Y, Z olarak sabitle
-                        if df.shape[1] >= 3:
+                        # Eğer sütunlar ayrılamamışsa tek tek manuel zorlayalım
+                        if df.shape[1] < 3:
+                            file.seek(0)
+                            try:
+                                if has_header_flag: df = pd.read_csv(file, sep=';', dtype=str)
+                                else: df = pd.read_csv(file, sep=';', header=None, dtype=str)
+                            except: pass
+                        if df.shape[1] < 3:
+                            file.seek(0)
+                            try:
+                                if has_header_flag: df = pd.read_csv(file, sep=',', dtype=str)
+                                else: df = pd.read_csv(file, sep=',', header=None, dtype=str)
+                            except: pass
+                        if df.shape[1] < 3:
+                            file.seek(0)
+                            try:
+                                if has_header_flag: df = pd.read_csv(file, delim_whitespace=True, dtype=str)
+                                else: df = pd.read_csv(file, delim_whitespace=True, header=None, dtype=str)
+                            except: pass
+
+                        if df.shape[1] < 3:
+                            # Veri anlaşılamayacak kadar bozuksa veya tek sütunsa boş dön
+                            return pd.DataFrame(columns=['X', 'Y', 'Z'])
+
+                        if has_header_flag:
+                            cols = [str(c).strip().upper() for c in df.columns]
+                            df.columns = cols
+                            if 'X' in cols and 'Y' in cols and 'Z' in cols:
+                                df = df[['X', 'Y', 'Z']]
+                            else:
+                                df = df.iloc[:, :3]
+                                df.columns = ['X', 'Y', 'Z']
+                        else:
                             df = df.iloc[:, :3]
                             df.columns = ['X', 'Y', 'Z']
-                        else:
-                            return pd.DataFrame(columns=['X', 'Y', 'Z'])
 
                         def safely_convert_to_float(val):
                             if pd.isna(val) or str(val).strip() == '': return 0.0
@@ -374,6 +395,12 @@ if bina_zip and hiz_csv and derin_csv:
                                     
                         for col in ['X', 'Y', 'Z']:
                             df[col] = df[col].apply(safely_convert_to_float)
+                            
+                        # Eğer X ve Y ters girilmişse otomatik düzelt (Türkiye'de Y genelde 4 milyon civarı, X 400-600 bin civarıdır)
+                        # Dolayısıyla X > Y ise ters girilmiştir.
+                        if len(df) > 0 and df['X'].mean() > df['Y'].mean():
+                            df['X'], df['Y'] = df['Y'], df['X']
+                            
                         return df
 
                     df_h = temizle(hiz_csv, has_header)
