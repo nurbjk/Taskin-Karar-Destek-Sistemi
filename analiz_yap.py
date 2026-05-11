@@ -213,8 +213,8 @@ def akilli_konum_analizi(gdf):
 
 def taskin_analizini_yap(gdf_binalar, df_h, df_d, buffer_size=6.0):
     gdf_halkalar = gpd.GeoDataFrame(gdf_binalar[['BINA_ID']], geometry=gdf_binalar.buffer(buffer_size), crs=gdf_binalar.crs)
-    pts_h = gpd.GeoDataFrame(df_h, geometry=gpd.points_from_xy(df_h.X, df_h.Y), crs=gdf_binalar.crs)
-    pts_d = gpd.GeoDataFrame(df_d, geometry=gpd.points_from_xy(df_d.X, df_d.Y), crs=gdf_binalar.crs)
+    pts_h = gpd.GeoDataFrame(df_h, geometry=gpd.points_from_xy(df_h['X'], df_h['Y']), crs=gdf_binalar.crs)
+    pts_d = gpd.GeoDataFrame(df_d, geometry=gpd.points_from_xy(df_d['X'], df_d['Y']), crs=gdf_binalar.crs)
     
     join_h = gpd.sjoin(pts_h, gdf_halkalar, predicate='within')
     res_h = join_h[join_h['Z'] != 0].groupby('BINA_ID')['Z'].mean().round(2).reset_index().rename(columns={'Z': 'HIZ'})
@@ -329,32 +329,35 @@ if bina_zip and hiz_csv and derin_csv:
                     def temizle(file, has_header_flag):
                         file.seek(0)
                         
-                        # Veriyi her halükarda önce string olarak okuyalım ki formatını biz düzeltelim (Pandas bozmadan)
+                        # Veriyi okurken ayracın ne olduğunu (virgül veya noktalı virgül) otomatik algılayıp okuyalım.
                         try:
                             if has_header_flag:
                                 df = pd.read_csv(file, sep=';', dtype=str)
-                                df.columns = [str(c).strip().upper() for c in df.columns]
                             else:
                                 df = pd.read_csv(file, sep=';', header=None, dtype=str)
-                                if df.shape[1] >= 3:
-                                    df = df.iloc[:, :3]
-                                    df.columns = ['X', 'Y', 'Z']
+                                
+                            # Eğer sütunlar ayrılamamışsa (örneğin ayraç virgülse)
+                            if df.shape[1] < 3:
+                                file.seek(0)
+                                if has_header_flag:
+                                    df = pd.read_csv(file, sep=',', dtype=str)
+                                else:
+                                    df = pd.read_csv(file, sep=',', header=None, dtype=str)
                         except:
                             file.seek(0)
-                            if has_header_flag:
-                                df = pd.read_csv(file, dtype=str)
-                                df.columns = [str(c).strip().upper() for c in df.columns]
-                            else:
-                                df = pd.read_csv(file, header=None, dtype=str)
-                                if df.shape[1] >= 3:
-                                    df = df.iloc[:, :3]
-                                    df.columns = ['X', 'Y', 'Z']
+                            df = pd.read_csv(file, sep=',', header=None, dtype=str)
+
+                        # CSV başlığı ne olursa olsun (veya yoksa) her zaman ilk 3 sütunu X, Y, Z olarak sabitle
+                        if df.shape[1] >= 3:
+                            df = df.iloc[:, :3]
+                            df.columns = ['X', 'Y', 'Z']
+                        else:
+                            return pd.DataFrame(columns=['X', 'Y', 'Z'])
 
                         def safely_convert_to_float(val):
                             if pd.isna(val) or str(val).strip() == '': return 0.0
                             val = str(val).strip()
                             if '.' in val and ',' in val:
-                                # Hangisi daha sağdaysa o ondalık ayırıcıdır
                                 if val.rfind(',') > val.rfind('.'):
                                     val = val.replace('.', '').replace(',', '.')
                                 else:
@@ -362,7 +365,6 @@ if bina_zip and hiz_csv and derin_csv:
                             elif ',' in val:
                                 val = val.replace(',', '.')
                             elif val.count('.') > 1:
-                                # Eğer sadece nokta var ama birden fazlaysa ('378.369.873' gibi), kesin binlik ayırıcıdır
                                 val = val.replace('.', '')
                             
                             try:
@@ -371,8 +373,7 @@ if bina_zip and hiz_csv and derin_csv:
                                 return 0.0
                                     
                         for col in ['X', 'Y', 'Z']:
-                            if col in df.columns:
-                                df[col] = df[col].apply(safely_convert_to_float)
+                            df[col] = df[col].apply(safely_convert_to_float)
                         return df
 
                     df_h = temizle(hiz_csv, has_header)
