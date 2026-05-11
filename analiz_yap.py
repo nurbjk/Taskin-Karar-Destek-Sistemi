@@ -424,23 +424,26 @@ if st.session_state.get('analiz_tamam', False):
             folium.GeoJson(r.geometry, style_function=lambda x, c=color: {'fillColor': c, 'color': c, 'weight': 1, 'fillOpacity': 0.6},
                            popup=popup).add_to(m)
                            
-        # Harita Lejantı Ekleme (Branca MacroElement ile Streamlit'te garantili gösterim)
         from branca.element import Template, MacroElement
         
+        horizontal_legend_html = """
+        <div style="display: flex; justify-content: center; align-items: center; padding: 15px; 
+                    background-color: #0f172a; border-radius: 8px; margin-top: 10px; 
+                    border: 1px solid rgba(255,255,255,0.1); flex-wrap: wrap; gap: 20px;">
+            <strong style="color: #e2e8f0; font-size: 15px;">Hayati Risk (Hazard Zones):</strong>
+            <div style="display: flex; align-items: center;"><div style="width: 30px; height: 15px; background-color: gray; margin-right: 8px; border-radius: 3px;"></div> <span style="color: #e2e8f0; font-size: 14px;">Yok</span></div>
+            <div style="display: flex; align-items: center;"><div style="width: 30px; height: 15px; background-color: #22c55e; margin-right: 8px; border-radius: 3px;"></div> <span style="color: #e2e8f0; font-size: 14px;">T1-Dusuk</span></div>
+            <div style="display: flex; align-items: center;"><div style="width: 30px; height: 15px; background-color: #eab308; margin-right: 8px; border-radius: 3px;"></div> <span style="color: #e2e8f0; font-size: 14px;">T2-Hafif</span></div>
+            <div style="display: flex; align-items: center;"><div style="width: 30px; height: 15px; background-color: #f97316; margin-right: 8px; border-radius: 3px;"></div> <span style="color: #e2e8f0; font-size: 14px;">T3-Yuksek</span></div>
+            <div style="display: flex; align-items: center;"><div style="width: 30px; height: 15px; background-color: #ef4444; margin-right: 8px; border-radius: 3px;"></div> <span style="color: #e2e8f0; font-size: 14px;">T4-CokYuk</span></div>
+        </div>
+        """
+        
+        # İndirilecek HTML haritasında görünmesi için
         legend_template = """
         {% macro html(this, kwargs) %}
-        <div style="position: absolute; 
-                    bottom: 20px; right: 20px; width: 140px; height: 160px; 
-                    background-color: rgba(15, 23, 42, 0.85); color: #e2e8f0; 
-                    border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; 
-                    padding: 10px; font-size: 14px; z-index: 9999;
-                    backdrop-filter: blur(5px);">
-            <strong style="color:#38bdf8; margin-bottom:10px; display:block;">Hayati Risk</strong>
-            <i style="background:#ef4444; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%;"></i> T4-CokYuk<br>
-            <i style="background:#f97316; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T3-Yuksek<br>
-            <i style="background:#eab308; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T2-Hafif<br>
-            <i style="background:#22c55e; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> T1-Dusuk<br>
-            <i style="background:gray; width: 15px; height: 15px; float: left; margin-right: 8px; border-radius: 50%; margin-top:4px;"></i> Yok<br>
+        <div style="position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 9999; min-width: 600px; opacity: 0.9;">
+        """ + horizontal_legend_html + """
         </div>
         {% endmacro %}
         """
@@ -448,7 +451,12 @@ if st.session_state.get('analiz_tamam', False):
         macro._template = Template(legend_template)
         m.get_root().add_child(macro)
         
+        # Haritayı çizdir
         st.components.v1.html(m._repr_html_(), height=500)
+        
+        # Lejantı Streamlit'te garantili görünmesi için doğrudan haritanın altına ekle
+        st.markdown(horizontal_legend_html, unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
         
         st.download_button(
             label="🗺️ Etkileşimli Haritayı İndir (HTML)",
@@ -510,14 +518,30 @@ if st.session_state.get('analiz_tamam', False):
             tmp_dir = tempfile.mkdtemp()
             shp_path = os.path.join(tmp_dir, "analiz_sonuclari.shp")
             
-            # Sadece gerekli kolonları al ve küsuratları 2 basamakla sınırla
-            istenen_kolonlar = ['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'YAPI_RISKI', 'MALIYET_TL', 'geometry']
-            mevcut_kolonlar = [c for c in istenen_kolonlar if c in gdf.columns]
-            export_gdf = gdf[mevcut_kolonlar].copy()
+            export_gdf = gdf.copy()
             
-            if 'ALAN_m2' in export_gdf.columns: export_gdf['ALAN_m2'] = export_gdf['ALAN_m2'].round(2)
-            if 'HIZ' in export_gdf.columns: export_gdf['HIZ'] = export_gdf['HIZ'].round(2)
-            if 'DERIN' in export_gdf.columns: export_gdf['DERIN'] = export_gdf['DERIN'].round(2)
+            # Global Mapper için renk kodlarını belirle (COLOR kolonu GM tarafından otomatik tanınır)
+            def get_gm_color(risk):
+                c_map = {
+                    'T4-CokYuk': 'RGB(239,68,68)',
+                    'T3-Yuksek': 'RGB(249,115,22)',
+                    'T2-Hafif': 'RGB(234,179,8)',
+                    'T1-Dusuk': 'RGB(34,197,94)'
+                }
+                return c_map.get(risk, 'RGB(128,128,128)')
+                
+            export_gdf['COLOR'] = export_gdf['RISK'].apply(get_gm_color)
+            
+            # Sadece gerekli kolonları al
+            istenen_kolonlar = ['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'YAPI_RISKI', 'MALIYET_TL', 'COLOR', 'geometry']
+            mevcut_kolonlar = [c for c in istenen_kolonlar if c in export_gdf.columns]
+            export_gdf = export_gdf[mevcut_kolonlar].copy()
+            
+            # Global Mapper'da string olarak formatlı gözükmesi için yuvarlama ve binlik ayırıcı
+            if 'ALAN_m2' in export_gdf.columns: export_gdf['ALAN_m2'] = export_gdf['ALAN_m2'].apply(lambda x: f"{x:.2f}")
+            if 'HIZ' in export_gdf.columns: export_gdf['HIZ'] = export_gdf['HIZ'].apply(lambda x: f"{x:.2f}")
+            if 'DERIN' in export_gdf.columns: export_gdf['DERIN'] = export_gdf['DERIN'].apply(lambda x: f"{x:.2f}")
+            if 'MALIYET_TL' in export_gdf.columns: export_gdf['MALIYET_TL'] = export_gdf['MALIYET_TL'].apply(lambda x: f"{x:,.0f}".replace(",", "."))
             
             for col in export_gdf.columns:
                 if export_gdf[col].dtype == 'object':
