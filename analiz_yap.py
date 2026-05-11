@@ -423,6 +423,14 @@ if st.session_state.get('analiz_tamam', False):
             
             folium.GeoJson(r.geometry, style_function=lambda x, c=color: {'fillColor': c, 'color': c, 'weight': 1, 'fillOpacity': 0.6},
                            popup=popup).add_to(m)
+            
+            # Poligon üzerine BINA_ID yazdırma
+            folium.map.Marker(
+                [r.geometry.centroid.y, r.geometry.centroid.x],
+                icon=folium.features.DivIcon(
+                    html=f'<div style="font-size: 10pt; color: black; font-weight: bold; text-align: center; transform: translate(-50%, -50%); text-shadow: 1px 1px 2px white;">{r["BINA_ID"]}</div>'
+                )
+            ).add_to(m)
                            
         from branca.element import Template, MacroElement
         
@@ -459,7 +467,7 @@ if st.session_state.get('analiz_tamam', False):
         st.markdown("<br>", unsafe_allow_html=True)
         
         st.download_button(
-            label="🗺️ Etkileşimli Haritayı İndir (HTML)",
+            label="🗺️  Haritayı İndir (HTML)",
             data=m.get_root().render(),
             file_name="Taskin_Analiz_Haritasi.html",
             mime="text/html",
@@ -532,8 +540,11 @@ if st.session_state.get('analiz_tamam', False):
                 
             export_gdf['COLOR'] = export_gdf['RISK'].apply(get_gm_color)
             
+            # Global Mapper'da otomatik isim göstermesi için LABEL ekle
+            export_gdf['LABEL'] = export_gdf['BINA_ID'].astype(str)
+            
             # Sadece gerekli kolonları al
-            istenen_kolonlar = ['BINA_ID', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'YAPI_RISKI', 'MALIYET_TL', 'COLOR', 'geometry']
+            istenen_kolonlar = ['BINA_ID', 'LABEL', 'TIP', 'ALAN_m2', 'HIZ', 'DERIN', 'RISK', 'YAPI_RISKI', 'MALIYET_TL', 'COLOR', 'geometry']
             mevcut_kolonlar = [c for c in istenen_kolonlar if c in export_gdf.columns]
             export_gdf = export_gdf[mevcut_kolonlar].copy()
             
