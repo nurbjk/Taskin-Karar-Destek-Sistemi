@@ -304,17 +304,19 @@ with st.expander("📢 Veri Hazırlama Kılavuzu (Kritik Uyarılar)", expanded=F
     with c_k1:
         st.markdown("""
         **🏢 Bina Verisi (ZIP):**
-        - Google Earth vb. üzerinden **poligon** olarak çizilmiş binaları içermelidir.
-        - Sisteme yüklenen binalara arka planda otomatik **1 metre buffer** uygulanır.
+        - CBS yazılımları (QGIS, ArcGIS vb.) üzerinden **poligon** olarak çizilmiş binaları içermelidir.
         - Dosya içinde `.shp`, `.dbf`, `.shx`, `.prj` mutlaka bulunmalı.
-        - Binalarınız hangi projeksiyonda olursa olsun, metrik hesaplamalar için sistem tarafından otomatik olarak **UTM Zone 35N (EPSG:32635)** formatına dönüştürülür.
+        - Binalara, yan menüden belirlediğiniz **Tampon Bölge (Buffer)** değeri kadar (varsayılan 6 metre) etki alanı uygulanır.
+        - Doğru analiz için sisteme yükleyeceğiniz bina verisinin projeksiyonu önceden **UTM Zone 35N (EPSG:32635)** formatına dönüştürülmüş olmalıdır.
         """)
     with c_k2:
         st.markdown("""
         **📊 Hız/Derinlik (CSV):**
-        - Sütun başlıkları kesinlikle büyük harf **X, Y, Z** olmalıdır.
-        - Ayraç olarak **noktalı virgül ( ; )** kullanılmalıdır.
-        - Ondalık sayılar için virgül (0,50) kullanılabilir.
+        - Dosyanızdaki **ilk 3 sütun** sırasıyla **X, Y ve Z** verisi olarak otomatik okunur (Sütun başlığı zorunlu değildir).
+        - Sistem; **boşluk, sekme (tab), virgül (,) veya noktalı virgül (;)** ayraçlarını otomatik algılar.
+        - CSV içindeki X ve Y koordinatları bina verisiyle eşleşebilmesi için **EPSG:32635** formatında olmalıdır.
+        - Ondalık sayılar için nokta veya virgül kullanabilirsiniz, sistem otomatik düzeltir.
+        - *Akıllı Düzeltme:* X ve Y koordinatları ters girilirse sistem tarafından otomatik düzeltilir.
         """)
 
 # Dosya Yükleme Paneli
