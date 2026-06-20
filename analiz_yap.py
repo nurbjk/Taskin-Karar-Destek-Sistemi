@@ -290,8 +290,8 @@ st.markdown(f"""
 with st.sidebar:
     st.markdown("### 🛠️ Sistem Ayarları")
     with st.expander("💰 Birim Maliyetleri Düzenle", expanded=True):
-        konut_f = st.number_input("Konut (TL/m²)", value=30000, step=1000)
-        ticari_f = st.number_input("Ticari (TL/m²)", value=45000, step=1000)
+        konut_f = st.number_input("Konut (TL/m²)", value=18200, step=1000)
+        ticari_f = st.number_input("Ticari (TL/m²)", value=21500, step=1000)
     with st.expander("⚙️ Veri ve Analiz Ayarları", expanded=True):
         buffer_size = st.number_input("Tampon Bölge (Buffer) - Metre", value=6.0, step=1.0)
         has_header = st.checkbox("CSV dosyalarında X,Y,Z satırı var", value=False)
@@ -352,8 +352,8 @@ if bina_zip and hiz_csv and derin_csv:
                         for line in lines:
                             line = line.strip().replace('"', '').replace("'", "")
                             if not line: continue
-                            
-                            # Herhangi bir formata karşı hazırlıklı ayırıcı (Boşluk, noktalı virgül, tab)
+                          
+
                             if ';' in line:
                                 parts = line.split(';')
                             elif '\t' in line:
@@ -392,7 +392,7 @@ if bina_zip and hiz_csv and derin_csv:
                         for col in ['X', 'Y', 'Z']:
                             df[col] = df[col].apply(safely_convert_to_float)
                             
-                        # Türkiye koordinatlarında Y ekseni her zaman X ekseninden daha büyük bir sayıdır (örn: 4 milyon vs 600 bin)
+                        # Türkiye koordinatlarında Y ekseni her zaman X ekseninden daha büyük bir sayıdır 
                         # Eğer kullanıcı X ve Y'yi ters kaydettiyse, otomatik olarak yerlerini değiştir!
                         if len(df) > 0 and df['X'].mean() > df['Y'].mean():
                             df['X'], df['Y'] = df['Y'], df['X']
