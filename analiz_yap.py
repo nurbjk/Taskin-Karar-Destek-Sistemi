@@ -204,7 +204,7 @@ def akilli_konum_analizi(gdf):
             if not nearby.empty: 
                 res = "Ticari/Fabrika"
                 
-        # Alan çok büyükse ticari diyelim
+       
         if res == "Konut" and row['ALAN_m2'] > 1000: 
             res = "Ticari/Fabrika"
             
@@ -393,7 +393,7 @@ if bina_zip and hiz_csv and derin_csv:
                             df[col] = df[col].apply(safely_convert_to_float)
                             
                         # Türkiye koordinatlarında Y ekseni her zaman X ekseninden daha büyük bir sayıdır 
-                        # Eğer kullanıcı X ve Y'yi ters kaydettiyse, otomatik olarak yerlerini değiştir!
+                        # Eğer kullanıcı X ve Y'yi ters kaydettiyse, otomatik olarak yerlerini değiştirir
                         if len(df) > 0 and df['X'].mean() > df['Y'].mean():
                             df['X'], df['Y'] = df['Y'], df['X']
                             
@@ -554,7 +554,7 @@ if st.session_state.get('analiz_tamam', False):
             
         st.download_button("📥 Excel Raporunu İndir", buf.getvalue(), "Taskin_Analiz_Raporu.xlsx", use_container_width=True)
         
-        # SHP Dışa Aktarma (Global Mapper Uyumlu)
+        # SHP Dışa Aktarma 
         import zipfile
         def create_shp_zip(gdf):
             tmp_dir = tempfile.mkdtemp()
@@ -562,7 +562,7 @@ if st.session_state.get('analiz_tamam', False):
             
             export_gdf = gdf.copy()
             
-            # Global Mapper için renk kodlarını belirle (COLOR kolonu GM tarafından otomatik tanınır)
+            # Global Mapper için renk kodlarını belirle 
             def get_gm_color(risk):
                 c_map = {
                     'T4-CokYuk': 'RGB(239,68,68)',
@@ -579,7 +579,7 @@ if st.session_state.get('analiz_tamam', False):
             mevcut_kolonlar = [c for c in istenen_kolonlar if c in export_gdf.columns]
             export_gdf = export_gdf[mevcut_kolonlar].copy()
             
-            # Global Mapper'da sayılar string olarak ondalıklı düzgün görünsün
+          
             if 'ALAN_m2' in export_gdf.columns: export_gdf['ALAN_m2'] = export_gdf['ALAN_m2'].apply(lambda x: f"{x:.2f}")
             if 'HIZ' in export_gdf.columns: export_gdf['HIZ'] = export_gdf['HIZ'].apply(lambda x: f"{x:.2f}")
             if 'DERIN' in export_gdf.columns: export_gdf['DERIN'] = export_gdf['DERIN'].apply(lambda x: f"{x:.2f}")
